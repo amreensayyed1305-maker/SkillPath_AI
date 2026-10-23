@@ -11,8 +11,7 @@ const $$ = (selector) => [...document.querySelectorAll(selector)];
 // API Base URL configuration: relative if served on port 5000, otherwise http://127.0.0.1:5000/api
 const API_BASE = window.location.port === "5000"
   ? "/api"
-  : (window.location.protocol === "file:" || window.location.port !== "5000" ? "http://127.0.0.1:5000/api" : "/api");
-
+  : "https://growvia-dfqn.onrender.com/api";
 const STORAGE_KEY = "skillpath_ai_v1";
 const RESUME_STORAGE_KEY = "skillpath_resume_v1";
 const TOKEN_KEY = "growvia_token";
