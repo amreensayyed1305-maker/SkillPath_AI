@@ -1,0 +1,790 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#6c4ce8">
+  <title>SkillPath AI | Your Career, Your Roadmap</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="#" data-page="dashboard">
+      <div class="brand-icon">
+    <img src="growvia-logo.png" alt="GrowVia Logo">
+</div>
+      <span>GrowVia<span class="brand-ai"> AI</span>
+      <small>Your career, your roadmap</small></span>
+    </a>
+
+    <div class="side-label">YOUR WORKSPACE</div>
+    <nav class="nav-menu">
+      <button class="nav-link active" data-page="dashboard"><span>⌂</span> Dashboard</button>
+      <button class="nav-link" data-page="careers"><span>◈</span> Career Explorer</button>
+      <button class="nav-link" data-page="roadmap"><span>⌘</span> Skill Roadmap</button>
+      <button class="nav-link" data-page="practice"><span>✎</span> Practice Zone</button>
+      <button class="nav-link" data-page="reality"><span>◉</span> Skill Reality Check <i class="new-dot"></i></button>
+      
+      <button class="nav-link" data-page="portfolio"><span>▣</span> Skill Portfolio</button>
+      <button class="nav-link" data-page="resume"><span>📄</span> Resume Builder</button>
+      <button class="nav-link" data-page="analytics"><span>▥</span> Progress & Analytics</button>
+    </nav>
+
+    <div class="sidebar-bottom">
+      <div class="side-tip">
+        <div class="tip-icon">✦</div>
+        <strong>Small steps. Big careers.</strong>
+        <p>Consistency today builds confidence tomorrow.</p>
+        <button class="text-button" data-page="roadmap">Continue learning →</button>
+      </div>
+      <div class="user-mini">
+        <div class="avatar" id="miniAvatar">S</div>
+        <div class="user-mini-text">
+          <strong id="miniName">Student</strong>
+          <small>Engineering student</small>
+        </div>
+        <button class="icon-button" id="editProfile" title="Edit profile">⚙</button>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <button class="mobile-menu icon-button" id="menuToggle" aria-label="Toggle menu">☰</button>
+      <div class="breadcrumb">Workspace <span>/</span> <strong id="pageName">Dashboard</strong></div>
+      <div class="top-actions">
+        <span class="top-date" id="todayDate"></span>
+        <button class="icon-button notification" title="Learning reminder">♧</button>
+        <button class="top-profile" id="topProfile"><span class="avatar small-avatar" id="topAvatar">S</span><span id="topName">Student</span>⌄</button>
+      </div>
+    </header>
+
+    <div class="page-container">
+
+      <!-- DASHBOARD -->
+      <section class="page active" id="dashboard">
+        <div class="welcome-row">
+          <div>
+            <div class="eyebrow"><span class="sparkle">✦</span> YOUR PERSONAL LEARNING SPACE</div>
+            <h1>Hey, <span class="gradient-text" id="welcomeName">Student</span>! 👋</h1>
+            <p class="muted">Your next opportunity starts with what you learn today.</p>
+          </div>
+          <button class="primary-btn" data-page="roadmap">＋ Continue learning</button>
+        </div>
+
+        <div class="hero-banner">
+          <div class="hero-content">
+            <span class="hero-pill">✦ YOUR CAREER JOURNEY</span>
+            <h2>Don't just learn skills.<br>Build your <span>future.</span></h2>
+            <p>Learn with purpose, practise with confidence, and prove you're job-ready.</p>
+            <button class="hero-btn" data-page="reality">Check my skill readiness <span>→</span></button>
+          </div>
+          <div class="hero-art" aria-hidden="true">
+            <div class="orbit orbit-one"></div>
+            <div class="orbit orbit-two"></div>
+            <div class="hero-code">&lt;/&gt;</div>
+            <div class="float-card float-top">✦ <span>Learn</span></div>
+            <div class="float-card float-bottom">✓ <span>Grow</span></div>
+            <div class="hero-spark">✧</div>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <article class="stat-card">
+            <div class="stat-icon purple">⌘</div>
+            <span class="stat-label">Roadmap progress</span>
+            <strong class="stat-number" id="roadmapStat">0%</strong>
+            <div class="mini-progress"><span id="roadmapBar"></span></div>
+            <small>Across your selected learning path</small>
+          </article>
+          <article class="stat-card">
+            <div class="stat-icon orange">⚡</div>
+            <span class="stat-label">Learning streak</span>
+            <strong class="stat-number"><span id="streakStat">0</span> days</strong>
+            <small>Keep showing up every day</small>
+          </article>
+          <article class="stat-card">
+            <div class="stat-icon green">✓</div>
+            <span class="stat-label">Topics completed</span>
+            <strong class="stat-number" id="completedStat">0</strong>
+            <small>Topics you've marked as complete</small>
+          </article>
+          <article class="stat-card">
+            <div class="stat-icon pink">◎</div>
+            <span class="stat-label">Practice average</span>
+            <strong class="stat-number" id="scoreStat">—</strong>
+            <small>Based on your completed assessments</small>
+          </article>
+        </div>
+
+        <div class="section-heading">
+          <div><h2>Your learning journey</h2><p class="muted">Everything you need, all in one place.</p></div>
+          <button class="text-button" data-page="roadmap">View roadmap →</button>
+        </div>
+
+        <div class="dashboard-grid">
+          <article class="panel roadmap-panel">
+            <div class="panel-heading"><div><h3>Continue your roadmap</h3><p class="muted">Pick up where you left off.</p></div><span class="pill">MY PATH</span></div>
+            <div class="field-inline">
+              <label for="dashboardLanguage">Learning track</label>
+              <select id="dashboardLanguage">
+                <option>Python</option><option>SQL</option><option>Java</option>
+                <option>JavaScript</option><option>Data Structures & Algorithms</option>
+                <option>AI / Machine Learning</option><option>Web Development</option>
+              </select>
+            </div>
+            <div id="dashboardRoadmap" class="topic-list"></div>
+            <button class="outline-btn full-btn" data-page="roadmap">Explore full roadmap →</button>
+          </article>
+
+          <article class="panel daily-panel">
+            <div class="panel-heading"><div><h3>Today's focus</h3><p class="muted">One step at a time.</p></div><span class="today-icon">✦</span></div>
+            <div class="focus-card">
+              <div class="focus-number">01</div>
+              <div><strong id="focusTitle">Learn your first topic</strong><p id="focusDescription">Choose a learning track to get started.</p></div>
+            </div>
+            <div class="task-row"><span class="task-check">✓</span><span>Study a roadmap topic</span><span class="task-time">20 min</span></div>
+            <div class="task-row"><span class="task-check">✎</span><span>Attempt a practice quiz</span><span class="task-time">10 min</span></div>
+            <div class="task-row"><span class="task-check">◉</span><span>Review your weak areas</span><span class="task-time">10 min</span></div>
+            <button class="primary-btn full-btn" data-page="practice">Start practising →</button>
+          </article>
+        </div>
+
+        <div class="section-heading"><div><h2>Explore your workspace</h2><p class="muted">Turn your learning into career-ready skills.</p></div></div>
+        <div class="feature-grid">
+          <button class="feature-card" data-page="careers"><span class="feature-icon peach">◈</span><strong>Explore careers</strong><p>Discover roles and skills employers expect.</p><span class="feature-arrow">↗</span></button>
+          <button class="feature-card" data-page="practice"><span class="feature-icon lavender">✎</span><strong>Practice daily</strong><p>Test yourself with interactive quizzes.</p><span class="feature-arrow">↗</span></button>
+          <button class="feature-card" data-page="portfolio"><span class="feature-icon mint">▣</span><strong>Build your portfolio</strong><p>Showcase projects and achievements.</p><span class="feature-arrow">↗</span></button>
+          <button class="feature-card" data-page="assistant"><span class="feature-icon yellow">✧</span><strong>Ask your career assistant</strong><p>Get guidance for your next step.</p><span class="feature-arrow">↗</span></button>
+        </div>
+      </section>
+
+      <!-- CAREER EXPLORER -->
+      <section class="page" id="careers">
+        <div class="page-intro"><div class="eyebrow">FIND YOUR DIRECTION</div><h1>Career <span class="gradient-text">Explorer</span></h1><p class="muted">Explore career paths, understand required skills, and choose your next goal.</p></div>
+        <div class="filter-bar"><input id="careerSearch" type="search" placeholder="Search roles or skills..."><select id="careerFilter"><option value="All">All domains</option><option>Development</option><option>Data</option><option>AI / ML</option><option>Core CS</option></select></div>
+        <div id="careerGrid" class="career-grid"></div>
+        <div class="panel career-detail" id="careerDetail"><div class="empty-state">Select a career card to explore its skills and roadmap.</div></div>
+      </section>
+
+      <!-- ROADMAP -->
+      <section class="page" id="roadmap">
+        <div class="page-intro"><div class="eyebrow">LEARN WITH A PLAN</div><h1>Your Skill <span class="gradient-text">Roadmap</span></h1><p class="muted">Structured learning paths for engineering students, from fundamentals to projects.</p></div>
+        <div class="panel roadmap-selector"><label for="roadmapLanguage">Choose your learning track</label><select id="roadmapLanguage"><option>Python</option><option>SQL</option><option>Java</option><option>JavaScript</option><option>Data Structures & Algorithms</option><option>AI / Machine Learning</option><option>Web Development</option></select><span id="roadmapProgressLabel" class="pill">0% COMPLETED</span></div>
+        <div class="roadmap-summary" id="roadmapSummary"></div>
+        <div class="roadmap-timeline" id="roadmapTimeline"></div>
+      </section>
+
+      <!-- PRACTICE ZONE -->
+      <section class="page" id="practice">
+        <div class="page-intro"><div class="eyebrow">PRACTISE. IMPROVE. REPEAT.</div><h1>Practice <span class="gradient-text">Zone</span></h1><p class="muted">Strengthen your concepts with daily assessments and revision.</p></div>
+        <div class="practice-tabs"><button class="tab-btn active" data-practice="quiz">Daily Quiz</button><button class="tab-btn" data-practice="revision">Revision Notes</button><button class="tab-btn" data-practice="history">Quiz History</button></div>
+        <div class="practice-view active" id="quizView">
+          <div class="panel quiz-panel">
+            <div class="quiz-top"><span class="pill" id="quizCategory">PYTHON BASICS</span><span id="quizCount">Question 1</span></div>
+            <div class="quiz-progress"><span id="quizBar"></span></div>
+            <div id="quizContent"></div>
+          </div>
+        </div>
+        <div class="practice-view" id="revisionView">
+          <div class="panel"><div class="panel-heading"><div><h3>Quick revision library</h3><p class="muted">Short reminders for concepts worth revisiting.</p></div></div><div id="revisionList" class="revision-list"></div></div>
+        </div>
+        <div class="practice-view" id="historyView">
+          <div class="panel"><h3>Your assessment history</h3><div id="quizHistory" class="history-list"></div></div>
+        </div>
+      </section>
+
+      <!-- SKILL REALITY CHECK -->
+      <section class="page" id="reality">
+        <div class="page-intro"><div class="eyebrow">EVIDENCE OVER GUESSWORK</div><h1>Skill Reality <span class="gradient-text">Check</span></h1><p class="muted">Check your knowledge, find weak areas, and discover what to practise next.</p></div>
+        <div class="reality-layout">
+          <div class="panel">
+            <h3>Build your readiness check</h3><p class="muted">Choose a target role and rate your current experience honestly.</p>
+            <form id="realityForm">
+              <label for="targetRole">Target career</label>
+              <select id="targetRole"><option>Frontend Developer</option><option>Backend Developer</option><option>Data Analyst</option><option>Python Developer</option><option>Java Developer</option><option>AI / ML Engineer</option></select>
+              <div id="realitySkills"></div>
+              <button type="submit" class="primary-btn full-btn">Evaluate my skills →</button>
+            </form>
+          </div>
+          <div class="panel reality-result" id="realityResult"><div class="empty-illustration">◎</div><h3>Your results will appear here</h3><p class="muted">Rate your skills and run an assessment to see your self-reported readiness and recommended next steps.</p></div>
+        </div>
+        <div class="panel evidence-panel"><h3>What makes a skill credible?</h3><div class="evidence-grid"><div><span>01</span><strong>Learn</strong><p>Understand the concepts.</p></div><div><span>02</span><strong>Practise</strong><p>Pass quizzes and exercises.</p></div><div><span>03</span><strong>Build</strong><p>Complete a working project.</p></div><div><span>04</span><strong>Prove</strong><p>Link your work in your portfolio.</p></div></div></div>
+      </section>
+
+      <!-- AI CAREER ASSISTANT -->
+      <section class="page" id="assistant">
+        <div class="page-intro"><div class="eyebrow">YOUR LEARNING COMPANION</div><h1>AI Career <span class="gradient-text">Assistant</span></h1><p class="muted">Reflect on your goals and get practical next-step suggestions.</p></div>
+        <div class="chat-layout panel">
+          <div class="chat-header"><div class="assistant-avatar">✧</div><div><strong>SkillPath Guide</strong><small><span class="online-dot"></span> Career guidance demo</small></div><button class="text-button" id="clearChat">Clear chat</button></div>
+          <div id="chatMessages" class="chat-messages"><div class="chat-bubble bot">Hi there! 👋 I'm your SkillPath career guide. Tell me which role you're aiming for, what you're learning, or where you're stuck. I'll help you plan your next step.</div></div>
+          <div class="suggestion-chips"><button data-prompt="How do I become a frontend developer?">Frontend roadmap</button><button data-prompt="How can I improve my resume?">Improve my resume</button><button data-prompt="How should I prepare for placements?">Placement prep</button><button data-prompt="How can I find my skill gaps?">Find skill gaps</button></div>
+          <form id="chatForm" class="chat-input"><input id="chatInput" placeholder="Ask about skills, careers, or placements..." autocomplete="off" required><button class="primary-btn" type="submit">Send ↑</button></form>
+          <p class="disclaimer">Prototype assistant with rule-based responses. Connect an AI API for genuine AI-generated guidance.</p>
+        </div>
+      </section>
+
+      <!-- PORTFOLIO -->
+      <section class="page" id="portfolio">
+        <div class="page-intro"><div class="eyebrow">SHOW WHAT YOU CAN DO</div><h1>Skill <span class="gradient-text">Portfolio</span></h1><p class="muted">Create your student profile, showcase your projects, and highlight your achievements.</p></div>
+        <div class="portfolio-layout">
+          <div class="panel">
+            <div class="panel-heading"><div><h3>Your professional profile</h3><p class="muted">Keep your details ready for recruiters.</p></div></div>
+            <form id="profileForm" class="form-grid">
+              <div class="form-field full"><label for="studentName">Full name</label><input id="studentName" placeholder="Your full name" required></div>
+              <div class="form-field"><label for="studentDegree">Degree / branch</label><input id="studentDegree" placeholder="B.Tech CSE (AI)"></div>
+              <div class="form-field"><label for="studentYear">Study year</label><select id="studentYear"><option>1st Year</option><option>2nd Year</option><option>3rd Year</option><option>4th Year</option><option>Graduate</option></select></div>
+              <div class="form-field"><label for="studentEmail">Email</label><input id="studentEmail" type="email" placeholder="you@example.com"></div>
+              <div class="form-field"><label for="studentLocation">Location</label><input id="studentLocation" placeholder="City, State"></div>
+              <div class="form-field full"><label for="studentBio">Professional summary</label><textarea id="studentBio" rows="3" placeholder="What are you learning? What roles interest you?"></textarea></div>
+              <div class="form-field"><label for="githubUrl">GitHub profile URL</label><input id="githubUrl" type="url" placeholder="https://github.com/username"></div>
+              <div class="form-field"><label for="linkedinUrl">LinkedIn profile URL</label><input id="linkedinUrl" type="url" placeholder="https://linkedin.com/in/username"></div>
+              <div class="form-field full"><label for="skillsInput">Skills (comma separated)</label><input id="skillsInput" placeholder="Python, SQL, HTML, CSS, JavaScript"></div>
+              <div class="form-field full"><button type="submit" class="primary-btn">Save profile ✓</button></div>
+            </form>
+          </div>
+          <div class="panel portfolio-preview">
+            <div class="preview-cover"></div><div class="preview-avatar" id="previewAvatar">S</div>
+            <h2 id="previewName">Your Name</h2><p id="previewDegree" class="muted">Engineering Student</p>
+            <p id="previewBio" class="preview-bio">Your professional summary will appear here.</p>
+            <div id="previewSkills" class="skill-tags"></div>
+            <div class="social-links" id="previewSocial"></div>
+            <div class="preview-stats"><div><strong id="projectCount">0</strong><small>Projects</small></div><div><strong id="certCount">0</strong><small>Certificates</small></div><div><strong id="portfolioSkillCount">0</strong><small>Skills</small></div></div>
+            <button class="outline-btn full-btn" id="exportPortfolio">Export portfolio as HTML ↗</button>
+          </div>
+        </div>
+        <div class="section-heading"><div><h2>Projects & certifications</h2><p class="muted">Add proof of the work you have completed.</p></div></div>
+        <div class="portfolio-lists">
+          <div class="panel"><h3>🚀 My projects</h3><form id="projectForm" class="stack-form"><input id="projectTitle" placeholder="Project name" required><textarea id="projectDescription" rows="2" placeholder="What did you build?" required></textarea><input id="projectLink" type="url" placeholder="GitHub or live demo URL (optional)"><button class="primary-btn" type="submit">＋ Add project</button></form><div id="projectList" class="item-list"></div></div>
+          <div class="panel"><h3>🏅 Certifications</h3><form id="certForm" class="stack-form"><input id="certTitle" placeholder="Certification name" required><input id="certIssuer" placeholder="Issuing organization" required><input id="certLink" type="url" placeholder="Certificate URL (optional)"><button class="primary-btn" type="submit">＋ Add certification</button></form><div id="certList" class="item-list"></div></div>
+        </div>
+      </section>
+
+      
+<!-- ================= RESUME BUILDER ================= -->
+
+<style>
+  .resume-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    align-items: start;
+  }
+
+  .resume-form label {
+    display: block;
+    margin: 14px 0 7px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .resume-form input,
+  .resume-form textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 12px;
+    border: 1px solid #EADFCB;
+    border-radius: 10px;
+    background: #FFFCF7;
+    font: inherit;
+    font-size: 14px;
+  }
+
+  .resume-form input:focus,
+  .resume-form textarea:focus {
+    outline: 2px solid #FBA00355;
+    border-color: #FBA003;
+  }
+
+  .resume-form textarea {
+    resize: vertical;
+  }
+
+  .resume-section-title {
+    margin: 24px 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #F0DFC0;
+    color: #A56800;
+    font-size: 15px;
+  }
+
+  .resume-two-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .resume-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 22px;
+  }
+
+  .resume-preview-column {
+    min-width: 0;
+    position: sticky;
+    top: 20px;
+  }
+
+  .resume-preview-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .resume-paper {
+    background: #FFFFFF;
+    color: #292318;
+    padding: 30px;
+    border-top: 6px solid #FBA003;
+    border-radius: 8px;
+    box-shadow: 0 8px 25px #60400F12;
+    overflow-wrap: anywhere;
+  }
+
+  .resume-paper-header {
+    text-align: center;
+    padding-bottom: 16px;
+    border-bottom: 2px solid #FBA003;
+  }
+
+  .resume-paper-header h2 {
+    margin: 0 0 10px;
+    font-size: 25px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .resume-paper-header p {
+    margin: 5px 0;
+    font-size: 11px;
+    line-height: 1.6;
+  }
+
+  .resume-paper-section {
+    margin-top: 20px;
+  }
+
+  .resume-paper-section h3 {
+    margin: 0 0 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #F0DFC0;
+    color: #A56800;
+    font-size: 11px;
+    letter-spacing: 1px;
+  }
+
+  .resume-paper-section p {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+  }
+
+  @media (max-width: 950px) {
+    .resume-layout {
+      grid-template-columns: 1fr;
+    }
+
+    .resume-preview-column {
+      position: static;
+    }
+  }
+
+  @media (max-width: 520px) {
+    .resume-two-columns {
+      grid-template-columns: 1fr;
+    }
+
+    .resume-paper {
+      padding: 20px;
+    }
+  }
+
+  @media print {
+    body * {
+      visibility: hidden !important;
+    }
+
+    #resumePreview,
+    #resumePreview * {
+      visibility: visible !important;
+    }
+
+    #resumePreview {
+      position: absolute !important;
+      left: 0 !important;
+      top: 0 !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+      padding: 12mm !important;
+      border: none !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+    }
+
+    #resumePreview .resume-paper-section {
+      break-inside: avoid;
+    }
+
+    @page {
+      size: A4;
+      margin: 0;
+    }
+  }
+</style>
+
+<section class="page" id="resume">
+
+  <div class="page-intro">
+    <div class="eyebrow">YOUR CAREER TOOLKIT</div>
+    <h1>Resume <span class="gradient-text">Builder</span> ✦</h1>
+    <p class="muted">
+      Build a professional resume and get ready for your next opportunity.
+    </p>
+  </div>
+
+  <div class="resume-layout">
+
+    <!-- RESUME FORM -->
+    <div class="panel">
+      <div class="panel-heading">
+        <div>
+          <h3>Enter your details</h3>
+          <p class="muted">Your resume preview updates as you type.</p>
+        </div>
+        <span class="pill">RESUME STUDIO</span>
+      </div>
+
+      <form id="resumeForm" class="resume-form">
+
+        <h3 class="resume-section-title">Personal Information</h3>
+
+        <label for="rName">Full Name *</label>
+        <input id="rName" placeholder="Your full name" required>
+
+        <label for="rEmail">Email Address *</label>
+        <input id="rEmail" type="email" placeholder="you@example.com" required>
+
+        <label for="rPhone">Phone Number</label>
+        <input id="rPhone" type="tel" placeholder="+91 98765 43210">
+
+        <label for="rLocation">Location</label>
+        <input id="rLocation" placeholder="City, State">
+
+        <label for="rLinkedin">LinkedIn Profile</label>
+        <input id="rLinkedin" type="url"
+          placeholder="https://linkedin.com/in/username">
+
+        <label for="rGithub">GitHub Profile</label>
+        <input id="rGithub" type="url"
+          placeholder="https://github.com/username">
+
+        
+<!-- Profile Photo Upload -->
+<div class="form-field full">
+    <label for="resumePhoto">Profile Photo</label>
+    <input
+        type="file"
+        id="resumePhoto"
+        accept="image/png, image/jpeg, image/webp"
+    >
+    <small class="muted">
+        Upload a JPG, PNG, or WebP image for your resume.
+    </small>
+</div>
+
+
+        <h3 class="resume-section-title">Education</h3>
+
+        <label for="rDegree">Degree / Branch</label>
+        <input id="rDegree" placeholder="B.Tech – CSE (AI)">
+
+        <label for="rCollege">College Name</label>
+        <input id="rCollege" placeholder="Your college name">
+
+        <div class="resume-two-columns">
+          <div>
+            <label for="rGraduation">Graduation Year</label>
+            <input id="rGraduation" placeholder="2028">
+          </div>
+          <div>
+            <label for="rCgpa">CGPA / Percentage</label>
+            <input id="rCgpa" placeholder="8.9 CGPA">
+          </div>
+        </div>
+
+        <h3 class="resume-section-title">Career Details</h3>
+
+        <label for="rSummary">Professional Summary</label>
+        <textarea id="rSummary" rows="4"
+          placeholder="Write about your strengths, interests and career goals."></textarea>
+
+        <label for="rSkills">Technical Skills</label>
+        <textarea id="rSkills" rows="3"
+          placeholder="Python, SQL, HTML, CSS, JavaScript"></textarea>
+
+        <label for="rProjects">Projects</label>
+        <textarea id="rProjects" rows="5"
+          placeholder="Project name, description, technologies and achievements."></textarea>
+
+        <label for="rExperience">Internships / Experience</label>
+        <textarea id="rExperience" rows="4"
+          placeholder="Role, organization, responsibilities and results."></textarea>
+
+        <label for="rCertifications">Certifications</label>
+        <textarea id="rCertifications" rows="3"
+          placeholder="Certificate name, organization and year."></textarea>
+
+        <label for="rAchievements">Achievements</label>
+        <textarea id="rAchievements" rows="3"
+          placeholder="Hackathons, awards and accomplishments."></textarea>
+
+        <div class="resume-actions">
+          <button type="submit" class="primary-btn">
+            Save Resume ✓
+          </button>
+
+          <button type="button" class="outline-btn" id="clearResume">
+            Clear Form
+          </button>
+        </div>
+
+      </form>
+    </div>
+
+    <!-- LIVE RESUME PREVIEW -->
+    <div class="resume-preview-column">
+
+      <div class="resume-preview-heading">
+        <div>
+          <h3>Live Preview</h3>
+          <p class="muted">Your professional resume</p>
+        </div>
+
+        <button type="button" class="primary-btn" id="printResume">
+          ↓ Save as PDF
+        </button>
+      </div>
+
+      <article class="resume-paper" id="resumePreview">
+
+        <header class="resume-paper-header">
+          <h2 id="pName">YOUR NAME</h2>
+          <p id="pContact">Email · Phone · Location</p>
+          <p id="pLinks"></p>
+        </header>
+
+        <section class="resume-paper-section">
+          <h3>PROFESSIONAL SUMMARY</h3>
+          <p id="pSummary">Your professional summary will appear here.</p>
+        </section>
+
+        <section class="resume-paper-section">
+          <h3>EDUCATION</h3>
+          <p id="pEducation">Your education details will appear here.</p>
+        </section>
+
+        <section class="resume-paper-section">
+          <h3>TECHNICAL SKILLS</h3>
+          <p id="pSkills">Your skills will appear here.</p>
+        </section>
+
+        <section class="resume-paper-section">
+          <h3>PROJECTS</h3>
+          <p id="pProjects">Your projects will appear here.</p>
+        </section>
+
+        <section class="resume-paper-section">
+          <h3>INTERNSHIPS & EXPERIENCE</h3>
+          <p id="pExperience">Your experience will appear here.</p>
+        </section>
+
+        <section class="resume-paper-section">
+          <h3>CERTIFICATIONS</h3>
+          <p id="pCertifications">Your certifications will appear here.</p>
+        </section>
+
+        <section class="resume-paper-section">
+          <h3>ACHIEVEMENTS</h3>
+          <p id="pAchievements">Your achievements will appear here.</p>
+        </section>
+
+      </article>
+    </div>
+  </div>
+</section>
+
+<script>
+(() => {
+  const form = document.getElementById("resumeForm");
+  if (!form) return;
+
+  const fieldIds = [
+    "rName", "rEmail", "rPhone", "rLocation",
+    "rLinkedin", "rGithub", "rDegree", "rCollege",
+    "rGraduation", "rCgpa", "rSummary", "rSkills",
+    "rProjects", "rExperience", "rCertifications",
+    "rAchievements"
+  ];
+
+  const storageKey = "skillpath_resume_v1";
+
+  const getValue = id =>
+    document.getElementById(id).value.trim();
+
+  function setPreview(id, value, fallback = "Not added yet") {
+    document.getElementById(id).textContent = value || fallback;
+  }
+
+  function updatePreview() {
+    setPreview("pName", getValue("rName"), "YOUR NAME");
+
+    const contact = [
+      getValue("rEmail"),
+      getValue("rPhone"),
+      getValue("rLocation")
+    ].filter(Boolean);
+
+    setPreview(
+      "pContact",
+      contact.join(" · "),
+      "Email · Phone · Location"
+    );
+
+    const links = [
+      getValue("rLinkedin"),
+      getValue("rGithub")
+    ].filter(Boolean);
+
+    setPreview("pLinks", links.join(" | "), "");
+
+    const education = [
+      getValue("rDegree"),
+      getValue("rCollege"),
+      getValue("rGraduation")
+        ? "Graduation: " + getValue("rGraduation")
+        : "",
+      getValue("rCgpa")
+        ? "CGPA / Percentage: " + getValue("rCgpa")
+        : ""
+    ].filter(Boolean).join("\n");
+
+    setPreview("pEducation", education, "Your education details will appear here.");
+    setPreview("pSummary", getValue("rSummary"), "Your professional summary will appear here.");
+    setPreview("pSkills", getValue("rSkills"), "Your skills will appear here.");
+    setPreview("pProjects", getValue("rProjects"), "Your projects will appear here.");
+    setPreview("pExperience", getValue("rExperience"), "Your experience will appear here.");
+    setPreview("pCertifications", getValue("rCertifications"), "Your certifications will appear here.");
+    setPreview("pAchievements", getValue("rAchievements"), "Your achievements will appear here.");
+  }
+
+  function saveResume() {
+    const data = {};
+
+    fieldIds.forEach(id => {
+      data[id] = document.getElementById(id).value;
+    });
+
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(data));
+      return true;
+    } catch (error) {
+      alert("Unable to save resume details in this browser.");
+      return false;
+    }
+  }
+
+  form.addEventListener("input", updatePreview);
+
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+
+    if (!form.reportValidity()) return;
+
+    if (saveResume()) {
+      updatePreview();
+      alert("Resume saved successfully!");
+    }
+  });
+
+  document.getElementById("clearResume").addEventListener("click", () => {
+    if (!confirm("Clear all resume details and delete the saved resume?")) {
+      return;
+    }
+
+    form.reset();
+    localStorage.removeItem(storageKey);
+    updatePreview();
+  });
+
+  document.getElementById("printResume").addEventListener("click", () => {
+    updatePreview();
+    window.print();
+  });
+
+  try {
+    const saved = localStorage.getItem(storageKey);
+
+    if (saved) {
+      const data = JSON.parse(saved);
+
+      fieldIds.forEach(id => {
+        if (typeof data[id] === "string") {
+          document.getElementById(id).value = data[id];
+        }
+      });
+    }
+  } catch (error) {
+    console.warn("Could not load saved resume details.", error);
+  }
+
+  updatePreview();
+})();
+</script>
+
+<!-- =============== END RESUME BUILDER =============== -->
+
+
+      <!-- ANALYTICS -->
+      <section class="page" id="analytics">
+        <div class="page-intro"><div class="eyebrow">YOUR PROGRESS, MADE VISIBLE</div><h1>Progress & <span class="gradient-text">Analytics</span></h1><p class="muted">Understand your learning habits, quiz scores, and completed milestones.</p></div>
+        <div class="stats-grid">
+          <article class="stat-card"><div class="stat-icon purple">⌘</div><span class="stat-label">Topics completed</span><strong class="stat-number" id="analyticsTopics">0</strong><small>Across all learning tracks</small></article>
+          <article class="stat-card"><div class="stat-icon green">✓</div><span class="stat-label">Quiz attempts</span><strong class="stat-number" id="analyticsAttempts">0</strong><small>Completed assessments</small></article>
+          <article class="stat-card"><div class="stat-icon orange">◎</div><span class="stat-label">Average score</span><strong class="stat-number" id="analyticsScore">—</strong><small>Across your quiz attempts</small></article>
+          <article class="stat-card"><div class="stat-icon pink">▣</div><span class="stat-label">Portfolio items</span><strong class="stat-number" id="analyticsPortfolio">0</strong><small>Projects and certificates</small></article>
+        </div>
+        <div class="dashboard-grid analytics-grid">
+          <div class="panel"><div class="panel-heading"><div><h3>Roadmap completion</h3><p class="muted">Progress by learning track</p></div></div><div id="analyticsTracks" class="track-progress-list"></div></div>
+          <div class="panel"><div class="panel-heading"><div><h3>Assessment performance</h3><p class="muted">Your latest quiz attempts</p></div></div><div id="analyticsQuizzes" class="track-progress-list"></div></div>
+        </div>
+        <div class="panel data-panel"><h3>Your data</h3><p class="muted">This prototype stores progress in this browser. Export a snapshot for your own records.</p><button class="outline-btn" id="exportData">Download progress JSON ↓</button><button class="danger-btn" id="resetData">Reset all app data</button></div>
+      </section>
+
+      <footer class="footer"><span>✦ SkillPath AI</span><span>Learn with purpose. Grow with proof.</span><span>Built for the next generation of engineers.</span></footer>
+    </div>
+  </main>
+  
+<!-- Floating AI Career Assistant -->
+<button
+    type="button"
+    id="floatingAIButton"
+    class="floating-ai-button"
+    aria-label="Open AI Career Assistant"
+    title="AI Career Assistant"
+>
+    ✧
+    <span class="floating-ai-tooltip">AI Career Assistant</span>
+</button>
+
+
+  <div class="toast" id="toast" role="status"></div>
+  <script src="script.js"></script>
+</body>
+</html>
