@@ -55,8 +55,40 @@
       <div class="breadcrumb">Workspace <span>/</span> <strong id="pageName">Dashboard</strong></div>
       <div class="top-actions">
         <span class="top-date" id="todayDate"></span>
-        <button class="icon-button notification" title="Learning reminder">♧</button>
-        <button class="top-profile" id="topProfile"><span class="avatar small-avatar" id="topAvatar">S</span><span id="topName">Student</span>⌄</button>
+
+        <!-- NOTIFICATION BELL & DROPDOWN -->
+        <div class="notif-button-wrapper">
+          <button class="icon-button notification" id="notifButton" title="Notifications & reminders">♧<span class="notif-badge" id="notifBadge"></span></button>
+          <div class="notif-dropdown" id="notifDropdown">
+            <div class="notif-header">
+              <strong>Notifications & Reminders</strong>
+              <button class="text-button" id="markAllRead" style="font-size:11px;">Clear</button>
+            </div>
+            <div class="notif-list" id="notifList">
+              <div class="notif-item"><strong>Welcome to Growvia AI!</strong><p>Explore careers and follow your structured skill roadmap.</p></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- USER PROFILE & DROPDOWN -->
+        <div class="dropdown-container">
+          <button class="top-profile" id="topProfile">
+            <span class="avatar small-avatar" id="topAvatar">S</span>
+            <span id="topName">Student</span>
+            <span id="topCaret">⌄</span>
+          </button>
+          <div class="dropdown-menu" id="userDropdown">
+            <div class="dropdown-header">
+              <strong id="dropdownUserName">Student</strong>
+              <small id="dropdownUserEmail">Log in to sync progress</small>
+            </div>
+            <button class="dropdown-item" id="navProfileItem" data-page="portfolio"><span>▣</span> My Profile</button>
+            <button class="dropdown-item" id="navResumeItem" data-page="resume"><span>📄</span> My Resume</button>
+            <button class="dropdown-item" id="authActionItem"><span>🔑</span> Log In / Register</button>
+            <div class="dropdown-divider" id="dropdownDivider" style="display:none;"></div>
+            <button class="dropdown-item danger" id="logoutBtn" style="display:none;"><span>🚪</span> Log out</button>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -567,9 +599,14 @@
           <p class="muted">Your professional resume</p>
         </div>
 
-        <button type="button" class="primary-btn" id="printResume">
-          ↓ Save as PDF
-        </button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="outline-btn" id="downloadServerPdf" title="Download backend-generated PDF">
+            ↓ Download PDF
+          </button>
+          <button type="button" class="primary-btn" id="printResume">
+            ⎙ Print / Save
+          </button>
+        </div>
       </div>
 
       <article class="resume-paper" id="resumePreview">
@@ -620,134 +657,6 @@
   </div>
 </section>
 
-<script>
-(() => {
-  const form = document.getElementById("resumeForm");
-  if (!form) return;
-
-  const fieldIds = [
-    "rName", "rEmail", "rPhone", "rLocation",
-    "rLinkedin", "rGithub", "rDegree", "rCollege",
-    "rGraduation", "rCgpa", "rSummary", "rSkills",
-    "rProjects", "rExperience", "rCertifications",
-    "rAchievements"
-  ];
-
-  const storageKey = "skillpath_resume_v1";
-
-  const getValue = id =>
-    document.getElementById(id).value.trim();
-
-  function setPreview(id, value, fallback = "Not added yet") {
-    document.getElementById(id).textContent = value || fallback;
-  }
-
-  function updatePreview() {
-    setPreview("pName", getValue("rName"), "YOUR NAME");
-
-    const contact = [
-      getValue("rEmail"),
-      getValue("rPhone"),
-      getValue("rLocation")
-    ].filter(Boolean);
-
-    setPreview(
-      "pContact",
-      contact.join(" · "),
-      "Email · Phone · Location"
-    );
-
-    const links = [
-      getValue("rLinkedin"),
-      getValue("rGithub")
-    ].filter(Boolean);
-
-    setPreview("pLinks", links.join(" | "), "");
-
-    const education = [
-      getValue("rDegree"),
-      getValue("rCollege"),
-      getValue("rGraduation")
-        ? "Graduation: " + getValue("rGraduation")
-        : "",
-      getValue("rCgpa")
-        ? "CGPA / Percentage: " + getValue("rCgpa")
-        : ""
-    ].filter(Boolean).join("\n");
-
-    setPreview("pEducation", education, "Your education details will appear here.");
-    setPreview("pSummary", getValue("rSummary"), "Your professional summary will appear here.");
-    setPreview("pSkills", getValue("rSkills"), "Your skills will appear here.");
-    setPreview("pProjects", getValue("rProjects"), "Your projects will appear here.");
-    setPreview("pExperience", getValue("rExperience"), "Your experience will appear here.");
-    setPreview("pCertifications", getValue("rCertifications"), "Your certifications will appear here.");
-    setPreview("pAchievements", getValue("rAchievements"), "Your achievements will appear here.");
-  }
-
-  function saveResume() {
-    const data = {};
-
-    fieldIds.forEach(id => {
-      data[id] = document.getElementById(id).value;
-    });
-
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(data));
-      return true;
-    } catch (error) {
-      alert("Unable to save resume details in this browser.");
-      return false;
-    }
-  }
-
-  form.addEventListener("input", updatePreview);
-
-  form.addEventListener("submit", event => {
-    event.preventDefault();
-
-    if (!form.reportValidity()) return;
-
-    if (saveResume()) {
-      updatePreview();
-      alert("Resume saved successfully!");
-    }
-  });
-
-  document.getElementById("clearResume").addEventListener("click", () => {
-    if (!confirm("Clear all resume details and delete the saved resume?")) {
-      return;
-    }
-
-    form.reset();
-    localStorage.removeItem(storageKey);
-    updatePreview();
-  });
-
-  document.getElementById("printResume").addEventListener("click", () => {
-    updatePreview();
-    window.print();
-  });
-
-  try {
-    const saved = localStorage.getItem(storageKey);
-
-    if (saved) {
-      const data = JSON.parse(saved);
-
-      fieldIds.forEach(id => {
-        if (typeof data[id] === "string") {
-          document.getElementById(id).value = data[id];
-        }
-      });
-    }
-  } catch (error) {
-    console.warn("Could not load saved resume details.", error);
-  }
-
-  updatePreview();
-})();
-</script>
-
 <!-- =============== END RESUME BUILDER =============== -->
 
 
@@ -783,6 +692,75 @@
     <span class="floating-ai-tooltip">AI Career Assistant</span>
 </button>
 
+
+  <!-- AUTHENTICATION MODAL -->
+  <div class="auth-modal-overlay" id="authModal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+    <div class="auth-card">
+      <button class="auth-close-btn" id="closeAuthModal" aria-label="Close modal">×</button>
+      <div class="auth-header">
+        <div class="auth-brand">
+          <img src="growvia-logo.png" alt="Growvia AI">
+          <span>GrowVia<span class="brand-ai" style="color:#D96B43"> AI</span></span>
+        </div>
+        <h3 id="authTitle">Student Sign In</h3>
+        <p id="authSubtitle">Log in to track your roadmaps, take quizzes and build your portfolio.</p>
+      </div>
+
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tabLogin" type="button">Log In</button>
+        <button class="auth-tab" id="tabRegister" type="button">Create Account</button>
+      </div>
+
+      <!-- LOGIN FORM -->
+      <form class="auth-form" id="loginForm">
+        <div class="auth-error" id="loginError"></div>
+        <div class="auth-field">
+          <label for="loginEmail">Email Address</label>
+          <input type="email" id="loginEmail" placeholder="you@example.com" required autocomplete="email">
+        </div>
+        <div class="auth-field">
+          <label for="loginPassword">Password</label>
+          <input type="password" id="loginPassword" placeholder="••••••••" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="auth-submit-btn" id="loginSubmitBtn">Log In →</button>
+        <div style="font-size:11.5px;text-align:center;color:var(--muted);margin-top:6px;">
+          Demo student account:<br><strong>student@growvia.ai</strong> / <strong>Student@123</strong>
+        </div>
+      </form>
+
+      <!-- REGISTER FORM -->
+      <form class="auth-form hidden" id="registerForm">
+        <div class="auth-error" id="registerError"></div>
+        <div class="auth-field">
+          <label for="regName">Full Name *</label>
+          <input type="text" id="regName" placeholder="Your full name" required autocomplete="name">
+        </div>
+        <div class="auth-field">
+          <label for="regEmail">Email Address *</label>
+          <input type="email" id="regEmail" placeholder="you@example.com" required autocomplete="email">
+        </div>
+        <div class="auth-field">
+          <label for="regPassword">Password * (min 6 characters)</label>
+          <input type="password" id="regPassword" placeholder="••••••••" minlength="6" required autocomplete="new-password">
+        </div>
+        <div class="auth-field">
+          <label for="regDegree">Degree / Branch</label>
+          <input type="text" id="regDegree" placeholder="B.Tech CSE (AI)">
+        </div>
+        <div class="auth-field">
+          <label for="regYear">Study Year</label>
+          <select id="regYear">
+            <option>1st Year</option>
+            <option>2nd Year</option>
+            <option selected>3rd Year</option>
+            <option>4th Year</option>
+            <option>Graduate</option>
+          </select>
+        </div>
+        <button type="submit" class="auth-submit-btn" id="registerSubmitBtn">Create Free Account ✓</button>
+      </form>
+    </div>
+  </div>
 
   <div class="toast" id="toast" role="status"></div>
   <script src="script.js"></script>

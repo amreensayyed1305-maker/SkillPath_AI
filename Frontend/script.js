@@ -1,19 +1,28 @@
-
 "use strict";
 
 /* =========================================================
-   SKILLPATH AI — FRONTEND APPLICATION
-   HTML + CSS + JavaScript | Browser localStorage
+   SKILLPATH AI / GROWVIA AI — FRONTEND APPLICATION
+   HTML + CSS + JavaScript | Full Backend Integration
 ========================================================= */
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
+// API Base URL configuration: relative if served on port 5000, otherwise http://127.0.0.1:5000/api
+const API_BASE = window.location.port === "5000"
+  ? "/api"
+  : (window.location.protocol === "file:" || window.location.port !== "5000" ? "http://127.0.0.1:5000/api" : "/api");
+
 const STORAGE_KEY = "skillpath_ai_v1";
+const RESUME_STORAGE_KEY = "skillpath_resume_v1";
+const TOKEN_KEY = "growvia_token";
+
+let currentUser = null;
+let backendAvailable = true;
 
 const defaultState = {
   profile: {
-    name: "", degree: "B.Tech CSE (AI)", year: "3rd Year",
+    name: "Student", degree: "B.Tech CSE (AI)", year: "3rd Year",
     email: "", location: "", bio: "", github: "", linkedin: "",
     skills: ["Python", "SQL", "HTML", "CSS", "JavaScript"]
   },
@@ -76,11 +85,12 @@ let toastTimer;
 
 function toast(message, error = false) {
   const element = $("#toast");
+  if (!element) return;
   element.textContent = message;
   element.classList.toggle("error", error);
   element.classList.add("show");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => element.classList.remove("show"), 2800);
+  toastTimer = setTimeout(() => element.classList.remove("show"), 3200);
 }
 
 function downloadFile(filename, content, type = "text/plain") {
@@ -102,7 +112,395 @@ function formatDate(date = new Date()) {
 }
 
 /* =========================================================
-   LEARNING ROADMAPS
+   API CLIENT & AUTHENTICATION
+========================================================= */
+
+function getToken() {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+function setToken(token) {
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(TOKEN_KEY);
+  }
+}
+
+async function apiRequest(endpoint, options = {}) {
+  const url = `${API_BASE}${endpoint}`;
+  const headers = { ...options.headers };
+
+  const token = getToken();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  if (!(options.body instanceof FormData) && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  try {
+    const response = await fetch(url, { ...options, headers });
+    backendAvailable = true;
+
+    // Handle JSON or Blob
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      const data = await response.json();
+      return { ok: response.ok, status: response.status, data };
+    } else if (contentType.includes("application/pdf")) {
+      const blob = await response.blob();
+      return { ok: response.ok, status: response.status, blob };
+    } else {
+      const text = await response.text();
+      return { ok: response.ok, status: response.status, text };
+    }
+  } catch (error) {
+    console.warn(`API request to ${endpoint} failed. Using offline state.`, error);
+    backendAvailable = false;
+    return { ok: false, error: error.message };
+  }
+}
+
+async function checkAuth() {
+  const token = getToken();
+  if (!token) {
+    updateAuthUI(null);
+    return false;
+  }
+
+  const res = await apiRequest("/auth/me");
+  if (res.ok && res.data?.user) {
+    currentUser = res.data.user;
+    updateAuthUI(currentUser);
+    await syncAllUserData();
+    return true;
+  } else {
+    // Invalid/expired token
+    setToken(null);
+    currentUser = null;
+    updateAuthUI(null);
+    return false;
+  }
+}
+
+function updateAuthUI(user) {
+  const topName = $("#topName");
+  const topAvatar = $("#topAvatar");
+  const miniName = $("#miniName");
+  const miniAvatar = $("#miniAvatar");
+  const welcomeName = $("#welcomeName");
+  const dropdownUserName = $("#dropdownUserName");
+  const dropdownUserEmail = $("#dropdownUserEmail");
+  const logoutBtn = $("#logoutBtn");
+  const dropdownDivider = $("#dropdownDivider");
+  const authActionItem = $("#authActionItem");
+
+  if (user) {
+    const displayName = (user.profile?.name || user.email.split("@")[0] || "Student");
+    const initial = displayName.charAt(0).toUpperCase();
+
+    if (topName) topName.textContent = displayName.split(" ")[0];
+    if (topAvatar) topAvatar.textContent = initial;
+    if (miniName) miniName.textContent = displayName;
+    if (miniAvatar) miniAvatar.textContent = initial;
+    if (welcomeName) welcomeName.textContent = displayName.split(" ")[0];
+
+    if (dropdownUserName) dropdownUserName.textContent = displayName;
+    if (dropdownUserEmail) dropdownUserEmail.textContent = user.email;
+
+    if (logoutBtn) logoutBtn.style.display = "flex";
+    if (dropdownDivider) dropdownDivider.style.display = "block";
+    if (authActionItem) authActionItem.style.display = "none";
+  } else {
+    if (topName) topName.textContent = "Log In";
+    if (topAvatar) topAvatar.textContent = "?";
+    if (miniName) miniName.textContent = "Guest Student";
+    if (miniAvatar) miniAvatar.textContent = "G";
+    if (welcomeName) welcomeName.textContent = "Student";
+
+    if (dropdownUserName) dropdownUserName.textContent = "Guest Student";
+    if (dropdownUserEmail) dropdownUserEmail.textContent = "Log in to save progress";
+
+    if (logoutBtn) logoutBtn.style.display = "none";
+    if (dropdownDivider) dropdownDivider.style.display = "none";
+    if (authActionItem) {
+      authActionItem.style.display = "flex";
+      authActionItem.innerHTML = "<span>🔑</span> Log In / Register";
+    }
+  }
+}
+
+async function syncAllUserData() {
+  if (!currentUser) return;
+
+  // 1. Fetch dashboard metrics
+  const dashRes = await apiRequest("/dashboard");
+  if (dashRes.ok && dashRes.data) {
+    const d = dashRes.data;
+    state.streak = d.streak || 0;
+    renderStatsFromData(d);
+  }
+
+  // 2. Fetch completed roadmap progress
+  const progRes = await apiRequest("/progress");
+  if (progRes.ok && progRes.data) {
+    state.completed = progRes.data.completed || {};
+  }
+
+  // 3. Fetch user projects
+  const projRes = await apiRequest("/projects");
+  if (projRes.ok && projRes.data) {
+    state.projects = projRes.data.projects || [];
+  }
+
+  // 4. Fetch user certifications
+  const certRes = await apiRequest("/certifications");
+  if (certRes.ok && certRes.data) {
+    state.certifications = certRes.data.certifications || [];
+  }
+
+  // 5. Fetch user profile
+  const profRes = await apiRequest("/profile");
+  if (profRes.ok && profRes.data) {
+    state.profile = {
+      name: profRes.data.name || "",
+      degree: profRes.data.degree || "",
+      year: profRes.data.year || "3rd Year",
+      email: profRes.data.email || currentUser.email,
+      location: profRes.data.location || "",
+      bio: profRes.data.bio || "",
+      github: profRes.data.github || "",
+      linkedin: profRes.data.linkedin || "",
+      skills: profRes.data.skills || []
+    };
+    populateProfileForm();
+  }
+
+  // 6. Fetch assessment history
+  const histRes = await apiRequest("/assessments/history");
+  if (histRes.ok && histRes.data) {
+    state.quizHistory = histRes.data.history || [];
+  }
+
+  // 7. Fetch notifications
+  loadNotifications();
+
+  // 8. Load saved resume from backend
+  await loadBackendResume();
+
+  saveState();
+  renderAll();
+}
+
+/* =========================================================
+   AUTH MODAL & DROPDOWNS HANDLING
+========================================================= */
+
+function openAuthModal(defaultTab = "login") {
+  const modal = $("#authModal");
+  if (!modal) return;
+  modal.classList.add("open");
+
+  if (defaultTab === "register") {
+    switchAuthTab("register");
+  } else {
+    switchAuthTab("login");
+  }
+}
+
+function closeAuthModal() {
+  const modal = $("#authModal");
+  if (modal) modal.classList.remove("open");
+  const loginErr = $("#loginError");
+  const regErr = $("#registerError");
+  if (loginErr) loginErr.classList.remove("visible");
+  if (regErr) regErr.classList.remove("visible");
+}
+
+function switchAuthTab(tab) {
+  const tabLogin = $("#tabLogin");
+  const tabRegister = $("#tabRegister");
+  const loginForm = $("#loginForm");
+  const registerForm = $("#registerForm");
+  const authTitle = $("#authTitle");
+  const authSubtitle = $("#authSubtitle");
+
+  if (tab === "register") {
+    tabRegister?.classList.add("active");
+    tabLogin?.classList.remove("active");
+    registerForm?.classList.remove("hidden");
+    loginForm?.classList.add("hidden");
+    if (authTitle) authTitle.textContent = "Create Student Account";
+    if (authSubtitle) authSubtitle.textContent = "Join Growvia AI to build your career roadmaps & resume.";
+  } else {
+    tabLogin?.classList.add("active");
+    tabRegister?.classList.remove("active");
+    loginForm?.classList.remove("hidden");
+    registerForm?.classList.add("hidden");
+    if (authTitle) authTitle.textContent = "Student Sign In";
+    if (authSubtitle) authSubtitle.textContent = "Log in to track your roadmaps, take quizzes and build your portfolio.";
+  }
+}
+
+// Setup Auth Modal Event Listeners
+$("#closeAuthModal")?.addEventListener("click", closeAuthModal);
+$("#authModal")?.addEventListener("click", (e) => {
+  if (e.target.id === "authModal") closeAuthModal();
+});
+
+$("#tabLogin")?.addEventListener("click", () => switchAuthTab("login"));
+$("#tabRegister")?.addEventListener("click", () => switchAuthTab("register"));
+
+$("#loginForm")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = $("#loginEmail").value.trim();
+  const password = $("#loginPassword").value.trim();
+  const errBox = $("#loginError");
+  const submitBtn = $("#loginSubmitBtn");
+
+  errBox.classList.remove("visible");
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Signing in...";
+
+  const res = await apiRequest("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password })
+  });
+
+  submitBtn.disabled = false;
+  submitBtn.textContent = "Log In →";
+
+  if (res.ok && res.data?.token) {
+    setToken(res.data.token);
+    currentUser = res.data.user;
+    updateAuthUI(currentUser);
+    closeAuthModal();
+    toast("Welcome back! Logged in successfully. 👋");
+    await syncAllUserData();
+  } else {
+    errBox.textContent = res.data?.error || "Invalid credentials. Please verify your email and password.";
+    errBox.classList.add("visible");
+  }
+});
+
+$("#registerForm")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const name = $("#regName").value.trim();
+  const email = $("#regEmail").value.trim();
+  const password = $("#regPassword").value.trim();
+  const degree = $("#regDegree").value.trim();
+  const year = $("#regYear").value;
+  const errBox = $("#registerError");
+  const submitBtn = $("#registerSubmitBtn");
+
+  errBox.classList.remove("visible");
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Creating account...";
+
+  const res = await apiRequest("/auth/register", {
+    method: "POST",
+    body: JSON.stringify({ name, email, password, degree, year })
+  });
+
+  submitBtn.disabled = false;
+  submitBtn.textContent = "Create Free Account ✓";
+
+  if (res.ok && res.data?.token) {
+    setToken(res.data.token);
+    currentUser = res.data.user;
+    updateAuthUI(currentUser);
+    closeAuthModal();
+    toast("Account created successfully! Welcome to Growvia AI. 🎉");
+    await syncAllUserData();
+  } else {
+    errBox.textContent = res.data?.error || "Registration failed. Please check your information.";
+    errBox.classList.add("visible");
+  }
+});
+
+// Top Profile Dropdown Toggle
+const topProfileBtn = $("#topProfile");
+const userDropdown = $("#userDropdown");
+
+if (topProfileBtn && userDropdown) {
+  topProfileBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!currentUser) {
+      openAuthModal("login");
+    } else {
+      userDropdown.classList.toggle("show");
+    }
+  });
+}
+
+$("#authActionItem")?.addEventListener("click", () => {
+  userDropdown?.classList.remove("show");
+  openAuthModal("login");
+});
+
+$("#logoutBtn")?.addEventListener("click", async () => {
+  userDropdown?.classList.remove("show");
+  await apiRequest("/auth/logout", { method: "POST" });
+  setToken(null);
+  currentUser = null;
+  updateAuthUI(null);
+  toast("You have logged out.");
+  navigate("dashboard");
+});
+
+// Notifications Bell & Dropdown
+const notifButton = $("#notifButton");
+const notifDropdown = $("#notifDropdown");
+
+if (notifButton && notifDropdown) {
+  notifButton.addEventListener("click", (e) => {
+    e.stopPropagation();
+    notifDropdown.classList.toggle("show");
+  });
+}
+
+$("#markAllRead")?.addEventListener("click", async () => {
+  const badge = $("#notifBadge");
+  if (badge) badge.classList.remove("visible");
+  toast("Notifications cleared.");
+});
+
+// Close dropdowns on outside click
+document.addEventListener("click", (e) => {
+  if (userDropdown && !e.target.closest(".dropdown-container")) {
+    userDropdown.classList.remove("show");
+  }
+  if (notifDropdown && !e.target.closest(".notif-button-wrapper")) {
+    notifDropdown.classList.remove("show");
+  }
+});
+
+async function loadNotifications() {
+  if (!currentUser) return;
+  const res = await apiRequest("/notifications");
+  if (res.ok && res.data) {
+    const notifs = res.data.notifications || [];
+    const unread = res.data.unread_count || 0;
+    const badge = $("#notifBadge");
+    if (badge) {
+      badge.classList.toggle("visible", unread > 0);
+    }
+    const list = $("#notifList");
+    if (list && notifs.length) {
+      list.innerHTML = notifs.map(n => `
+        <div class="notif-item ${n.is_read ? '' : 'unread'}">
+          <strong>${escapeHTML(n.title)}</strong>
+          <p>${escapeHTML(n.message)}</p>
+        </div>
+      `).join("");
+    }
+  }
+}
+
+/* =========================================================
+   LEARNING ROADMAPS DATA
 ========================================================= */
 
 const roadmaps = {
@@ -118,7 +516,6 @@ const roadmaps = {
     ["Modules and libraries", "Imports, packages, pip and virtual environments."],
     ["Mini project", "Build a task manager, expense tracker or quiz application."]
   ],
-
   "SQL": [
     ["Database fundamentals", "Tables, rows, columns, schemas and relational databases."],
     ["SELECT and WHERE", "Retrieve records, filter results and use logical operators."],
@@ -131,7 +528,6 @@ const roadmaps = {
     ["Advanced SQL", "CTEs, window functions and CASE expressions."],
     ["SQL project", "Build a sales report and analyze business performance."]
   ],
-
   "Java": [
     ["Java setup and syntax", "JDK, JVM, compilation and your first program."],
     ["Variables and data types", "Primitive types, casting and operators."],
@@ -144,7 +540,6 @@ const roadmaps = {
     ["Exceptions and file handling", "Try/catch, custom exceptions and file operations."],
     ["Java project", "Build a student management or library management system."]
   ],
-
   "JavaScript": [
     ["JavaScript fundamentals", "Variables, let, const, types and operators."],
     ["Conditions and loops", "Branching, iteration and common patterns."],
@@ -157,7 +552,6 @@ const roadmaps = {
     ["Browser storage", "localStorage, sessionStorage and JSON."],
     ["JavaScript project", "Build an interactive task manager or quiz application."]
   ],
-
   "Data Structures & Algorithms": [
     ["Complexity analysis", "Big O notation, time and space complexity."],
     ["Arrays and strings", "Traversal, searching and common array problems."],
@@ -170,7 +564,6 @@ const roadmaps = {
     ["Graphs", "BFS, DFS and graph representations."],
     ["Problem-solving project", "Solve timed problems and document solutions."]
   ],
-
   "AI / Machine Learning": [
     ["Python for data", "NumPy, pandas and notebook workflows."],
     ["Math foundations", "Vectors, matrices, probability and statistics."],
@@ -183,7 +576,6 @@ const roadmaps = {
     ["Model improvement", "Feature engineering and overfitting prevention."],
     ["ML project", "Build and evaluate a prediction or classification model."]
   ],
-
   "Web Development": [
     ["HTML foundations", "Semantic elements, headings, links and forms."],
     ["CSS foundations", "Selectors, colors, spacing and the box model."],
@@ -202,77 +594,86 @@ const roadmaps = {
    CAREER EXPLORER DATA
 ========================================================= */
 
-const careers = [
+let careersList = [
   {
-    title: "Frontend Developer", category: "Development",
+    id: 1, title: "Frontend Developer", category: "Development",
     icon: "◈", description: "Build responsive interfaces and interactive web experiences.",
     skills: ["HTML", "CSS", "JavaScript", "Git"],
     roadmap: "Web Development",
-    tasks: ["Create responsive pages", "Build accessible components", "Consume REST APIs", "Deploy a portfolio"]
+    tasks: ["Create responsive pages", "Build accessible components", "Consume REST APIs", "Deploy a portfolio"],
+    is_bookmarked: false
   },
   {
-    title: "Backend Developer", category: "Development",
+    id: 2, title: "Backend Developer", category: "Development",
     icon: "⌘", description: "Build APIs, server-side logic and database-driven applications.",
     skills: ["Python", "SQL", "APIs", "Git"],
     roadmap: "Python",
-    tasks: ["Learn a backend framework", "Design REST APIs", "Work with databases", "Build an authenticated application"]
+    tasks: ["Learn a backend framework", "Design REST APIs", "Work with databases", "Build an authenticated application"],
+    is_bookmarked: false
   },
   {
-    title: "Data Analyst", category: "Data",
+    id: 3, title: "Data Analyst", category: "Data",
     icon: "▥", description: "Turn raw data into insights that support business decisions.",
     skills: ["SQL", "Excel", "Python", "Visualization"],
     roadmap: "SQL",
-    tasks: ["Clean datasets", "Write analytical SQL queries", "Create dashboards", "Present findings"]
+    tasks: ["Clean datasets", "Write analytical SQL queries", "Create dashboards", "Present findings"],
+    is_bookmarked: false
   },
   {
-    title: "AI / ML Engineer", category: "AI / ML",
+    id: 4, title: "AI / ML Engineer", category: "AI / ML",
     icon: "✧", description: "Develop machine learning solutions and intelligent applications.",
     skills: ["Python", "Statistics", "ML", "Data"],
     roadmap: "AI / Machine Learning",
-    tasks: ["Prepare datasets", "Train baseline models", "Evaluate model quality", "Deploy a model demo"]
+    tasks: ["Prepare datasets", "Train baseline models", "Evaluate model quality", "Deploy a model demo"],
+    is_bookmarked: false
   },
   {
-    title: "Python Developer", category: "Development",
+    id: 5, title: "Python Developer", category: "Development",
     icon: "🐍", description: "Create scripts, automation tools and software using Python.",
     skills: ["Python", "OOP", "APIs", "SQL"],
     roadmap: "Python",
-    tasks: ["Master core Python", "Practise object-oriented programming", "Build an API", "Create a documented project"]
+    tasks: ["Master core Python", "Practise object-oriented programming", "Build an API", "Create a documented project"],
+    is_bookmarked: false
   },
   {
-    title: "Java Developer", category: "Development",
+    id: 6, title: "Java Developer", category: "Development",
     icon: "☕", description: "Develop Java applications and enterprise software.",
     skills: ["Java", "OOP", "SQL", "DSA"],
     roadmap: "Java",
-    tasks: ["Learn core Java", "Practise collections", "Build database integration", "Create a Java project"]
+    tasks: ["Learn core Java", "Practise collections", "Build database integration", "Create a Java project"],
+    is_bookmarked: false
   },
   {
-    title: "Software Engineer", category: "Core CS",
+    id: 7, title: "Software Engineer", category: "Core CS",
     icon: "⚙", description: "Design, build, test and maintain software systems.",
     skills: ["DSA", "Programming", "Git", "Testing"],
     roadmap: "Data Structures & Algorithms",
-    tasks: ["Practise algorithms", "Learn software design", "Use version control", "Build and test an application"]
+    tasks: ["Practise algorithms", "Learn software design", "Use version control", "Build and test an application"],
+    is_bookmarked: false
   },
   {
-    title: "Full Stack Developer", category: "Development",
+    id: 8, title: "Full Stack Developer", category: "Development",
     icon: "▣", description: "Work across frontend interfaces, backend services and databases.",
     skills: ["HTML", "JavaScript", "APIs", "SQL"],
     roadmap: "Web Development",
-    tasks: ["Build a responsive frontend", "Create an API", "Connect a database", "Deploy a full-stack project"]
+    tasks: ["Build a responsive frontend", "Create an API", "Connect a database", "Deploy a full-stack project"],
+    is_bookmarked: false
   },
   {
-    title: "Data Engineer", category: "Data",
+    id: 9, title: "Data Engineer", category: "Data",
     icon: "⇄", description: "Build pipelines that collect, transform and deliver data.",
     skills: ["SQL", "Python", "ETL", "Databases"],
     roadmap: "SQL",
-    tasks: ["Write advanced SQL", "Clean and transform data", "Build a simple ETL pipeline", "Document data quality"]
+    tasks: ["Write advanced SQL", "Clean and transform data", "Build a simple ETL pipeline", "Document data quality"],
+    is_bookmarked: false
   }
 ];
 
 /* =========================================================
-   QUIZ QUESTIONS
+   QUIZZES
 ========================================================= */
 
-const quizzes = {
+const defaultQuizzes = {
   "Python": [
     { q: "Which keyword defines a function in Python?", options: ["function", "def", "func", "define"], answer: 1, explanation: "Python uses the def keyword to define a function." },
     { q: "What is the result of len([10, 20, 30])?", options: ["2", "3", "4", "30"], answer: 1, explanation: "The list contains three elements." },
@@ -323,10 +724,6 @@ const quizzes = {
     { q: "What does an HTTP GET request usually do?", options: ["Retrieve a resource", "Delete a repository", "Compile Java", "Style a button"], answer: 0, explanation: "GET requests are intended to retrieve a resource." }
   ]
 };
-
-/* =========================================================
-   REVISION NOTES
-========================================================= */
 
 const revisionNotes = [
   { track: "Python", title: "Lists vs tuples", note: "Lists are mutable; tuples are immutable. Both support indexing." },
@@ -389,56 +786,47 @@ document.addEventListener("click", event => {
   }
 });
 
-$("#menuToggle").addEventListener("click", () => {
-  $("#sidebar").classList.toggle("open");
+$("#menuToggle")?.addEventListener("click", () => {
+  $("#sidebar")?.classList.toggle("open");
 });
 
 document.addEventListener("click", event => {
   if (
     window.innerWidth <= 850 &&
-    $("#sidebar").classList.contains("open") &&
+    $("#sidebar")?.classList.contains("open") &&
     !event.target.closest("#sidebar") &&
     !event.target.closest("#menuToggle")
   ) {
-    $("#sidebar").classList.remove("open");
+    $("#sidebar")?.classList.remove("open");
   }
 });
 
-
 const floatingAIButton = document.getElementById("floatingAIButton");
-
 if (floatingAIButton) {
-    floatingAIButton.addEventListener("click", function () {
-        if (typeof navigate === "function") {
-            navigate("assistant");
-        }
-    });
+  floatingAIButton.addEventListener("click", function () {
+    navigate("assistant");
+  });
 }
-
 
 /* =========================================================
-   PROGRESS HELPERS
+   PROGRESS & METRICS HELPERS
 ========================================================= */
 
-function trackKey(track) {
-  return track;
-}
-
 function isCompleted(track, index) {
-  return !!state.completed[trackKey(track)]?.includes(index);
+  return !!state.completed[track]?.includes(index);
 }
 
 function completedCount(track) {
-  return (state.completed[trackKey(track)] || []).length;
+  return (state.completed[track] || []).length;
 }
 
 function progressFor(track) {
-  return Math.round(completedCount(track) / roadmaps[track].length * 100);
+  const total = roadmaps[track]?.length || 10;
+  return Math.round(completedCount(track) / total * 100);
 }
 
 function totalCompleted() {
-  return Object.values(state.completed)
-    .reduce((total, items) => total + items.length, 0);
+  return Object.values(state.completed).reduce((total, items) => total + items.length, 0);
 }
 
 function averageScore() {
@@ -449,16 +837,14 @@ function averageScore() {
   );
 }
 
-function updateStreak() {
+function updateStreakLocal() {
   const today = new Date().toLocaleDateString("en-CA");
-
   if (state.lastActiveDate === today) return;
 
   if (state.lastActiveDate) {
     const previous = new Date(state.lastActiveDate + "T12:00:00");
     const current = new Date(today + "T12:00:00");
     const diff = Math.round((current - previous) / 86400000);
-
     state.streak = diff === 1 ? (state.streak || 0) + 1 : 1;
   } else {
     state.streak = 1;
@@ -466,6 +852,14 @@ function updateStreak() {
 
   state.lastActiveDate = today;
   saveState();
+}
+
+function renderStatsFromData(d) {
+  $("#roadmapStat").textContent = (d.roadmap_progress || 0) + "%";
+  $("#roadmapBar").style.width = (d.roadmap_progress || 0) + "%";
+  $("#streakStat").textContent = d.streak || 0;
+  $("#completedStat").textContent = d.topics_completed || 0;
+  $("#scoreStat").textContent = d.practice_average === null || d.practice_average === undefined ? "—" : d.practice_average + "%";
 }
 
 function renderStats() {
@@ -482,11 +876,17 @@ function renderStats() {
   $("#scoreStat").textContent = average === null ? "—" : average + "%";
 }
 
-function renderDashboard() {
-  renderStats();
+async function renderDashboard() {
+  // If backend available, fetch real dashboard metrics
+  const dashRes = await apiRequest("/dashboard");
+  if (dashRes.ok && dashRes.data) {
+    renderStatsFromData(dashRes.data);
+  } else {
+    renderStats();
+  }
 
   const track = $("#dashboardLanguage").value;
-  const topics = roadmaps[track];
+  const topics = roadmaps[track] || roadmaps["Python"];
   const nextIndex = topics.findIndex((_, index) => !isCompleted(track, index));
 
   $("#dashboardRoadmap").innerHTML = topics.slice(0, 4).map((topic, index) => `
@@ -518,54 +918,69 @@ function renderDashboard() {
   $("#roadmapLanguage").value = track;
 }
 
-$("#dashboardLanguage").addEventListener("change", renderDashboard);
+$("#dashboardLanguage")?.addEventListener("change", renderDashboard);
 
-document.addEventListener("click", event => {
+document.addEventListener("click", async event => {
   const toggle = event.target.closest("[data-toggle-topic]");
   const open = event.target.closest("[data-open-topic]");
 
   if (toggle) {
-    toggleTopic(toggle.dataset.track, Number(toggle.dataset.toggleTopic));
+    await toggleTopic(toggle.dataset.track, Number(toggle.dataset.toggleTopic));
   }
 
   if (open) {
     $("#roadmapLanguage").value = open.dataset.track;
     navigate("roadmap");
     renderRoadmap();
-    toast("Opened " + roadmaps[open.dataset.track][Number(open.dataset.openTopic)][0]);
+    toast("Opened " + (roadmaps[open.dataset.track]?.[Number(open.dataset.openTopic)]?.[0] || "topic"));
   }
 });
 
-function toggleTopic(track, index) {
+async function toggleTopic(track, index) {
   if (!roadmaps[track] || !Number.isInteger(index)) return;
 
   if (!state.completed[track]) state.completed[track] = [];
-
   const list = state.completed[track];
   const position = list.indexOf(index);
+  const willBeCompleted = position < 0;
 
-  if (position >= 0) {
+  if (willBeCompleted) {
+    list.push(index);
+    updateStreakLocal();
+    toast("Great work! Milestone completed ✓");
+  } else {
     list.splice(position, 1);
     toast("Topic marked incomplete.");
-  } else {
-    list.push(index);
-    updateStreak();
-    toast("Great work! Topic completed ✓");
   }
 
   saveState();
   renderDashboard();
   renderRoadmap();
   renderAnalytics();
+
+  // Call backend API if user is logged in
+  if (currentUser) {
+    const res = await apiRequest("/progress", {
+      method: "POST",
+      body: JSON.stringify({ track, step_index: index })
+    });
+    if (res.ok && res.data) {
+      state.completed[track] = res.data.completed_indices || [];
+      saveState();
+      renderDashboard();
+      renderRoadmap();
+      renderAnalytics();
+    }
+  }
 }
 
 /* =========================================================
    ROADMAP PAGE
 ========================================================= */
 
-function renderRoadmap() {
+async function renderRoadmap() {
   const track = $("#roadmapLanguage").value;
-  const topics = roadmaps[track];
+  const topics = roadmaps[track] || roadmaps["Python"];
   const done = completedCount(track);
   const percent = progressFor(track);
 
@@ -600,19 +1015,26 @@ function renderRoadmap() {
   renderStats();
 }
 
-$("#roadmapLanguage").addEventListener("change", renderRoadmap);
+$("#roadmapLanguage")?.addEventListener("change", renderRoadmap);
 
 /* =========================================================
    CAREER EXPLORER
 ========================================================= */
 
+async function loadCareersFromBackend() {
+  const res = await apiRequest("/careers");
+  if (res.ok && res.data?.careers) {
+    careersList = res.data.careers;
+  }
+}
+
 function renderCareers() {
   const query = $("#careerSearch").value.trim().toLowerCase();
   const category = $("#careerFilter").value;
 
-  const filtered = careers.filter(career => {
+  const filtered = careersList.filter(career => {
     const text = [
-      career.title, career.description, ...career.skills
+      career.title, career.description, ...(career.skills || [])
     ].join(" ").toLowerCase();
 
     return text.includes(query) &&
@@ -621,29 +1043,30 @@ function renderCareers() {
 
   $("#careerGrid").innerHTML = filtered.length
     ? filtered.map(career => `
-      <button class="career-card" data-career="${escapeHTML(career.title)}">
-        <span class="career-icon">${career.icon}</span>
+      <button class="career-card" data-career="${escapeHTML(career.title)}" data-career-id="${career.id}">
+        <span class="career-icon">${career.icon || "◈"}</span>
         <h3>${escapeHTML(career.title)}</h3>
         <p>${escapeHTML(career.description)}</p>
         <div class="career-tags">
-          ${career.skills.map(skill => `<span>${escapeHTML(skill)}</span>`).join("")}
+          ${(career.skills || []).map(skill => `<span>${escapeHTML(skill)}</span>`).join("")}
         </div>
-        <div style="margin-top:16px;color:#7048e8;font-size:11px;font-weight:700">
-          Explore role →
+        <div style="margin-top:16px;color:#D96B43;font-size:11px;font-weight:700;display:flex;justify-content:space-between;align-items:center;">
+          <span>Explore role →</span>
+          ${career.is_bookmarked ? '<span style="color:#F5A623;">★ Saved</span>' : ''}
         </div>
       </button>
     `).join("")
     : '<div class="panel empty-state">No matching careers. Try another search.</div>';
 }
 
-$("#careerSearch").addEventListener("input", renderCareers);
-$("#careerFilter").addEventListener("change", renderCareers);
+$("#careerSearch")?.addEventListener("input", renderCareers);
+$("#careerFilter")?.addEventListener("change", renderCareers);
 
-$("#careerGrid").addEventListener("click", event => {
+$("#careerGrid")?.addEventListener("click", event => {
   const card = event.target.closest("[data-career]");
   if (!card) return;
 
-  const career = careers.find(item => item.title === card.dataset.career);
+  const career = careersList.find(item => item.title === card.dataset.career);
   if (!career) return;
 
   $$(".career-card").forEach(item => item.classList.toggle(
@@ -657,90 +1080,96 @@ $("#careerGrid").addEventListener("click", event => {
         <h2>${escapeHTML(career.title)}</h2>
         <p class="muted">${escapeHTML(career.description)}</p>
       </div>
-      <button class="primary-btn" id="startCareerRoadmap">Start this roadmap →</button>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <button class="bookmark-btn ${career.is_bookmarked ? 'saved' : ''}" id="bookmarkCareerBtn" data-career-id="${career.id}">
+          ${career.is_bookmarked ? '★ Bookmarked' : '☆ Bookmark role'}
+        </button>
+        <button class="primary-btn" id="startCareerRoadmap">Start this roadmap →</button>
+      </div>
     </div>
     <h3>Skills to develop</h3>
-    <div class="skill-tags">${career.skills.map(skill =>
+    <div class="skill-tags">${(career.skills || []).map(skill =>
       `<span>${escapeHTML(skill)}</span>`).join("")}</div>
     <h3 style="margin-top:20px">Suggested preparation milestones</h3>
-    <ul>${career.tasks.map(task => `<li>${escapeHTML(task)}</li>`).join("")}</ul>
+    <ul>${(career.tasks || []).map(task => `<li>${escapeHTML(task)}</li>`).join("")}</ul>
     <p class="muted">These are general preparation suggestions, not a guarantee of employment. Review current job descriptions for your target market.</p>
   `;
 
-  $("#startCareerRoadmap").addEventListener("click", () => {
+  $("#startCareerRoadmap")?.addEventListener("click", () => {
     $("#roadmapLanguage").value = career.roadmap;
     navigate("roadmap");
     renderRoadmap();
   });
+
+  $("#bookmarkCareerBtn")?.addEventListener("click", async () => {
+    if (!currentUser) {
+      toast("Please log in to bookmark career options.");
+      openAuthModal("login");
+      return;
+    }
+
+    const res = await apiRequest(`/careers/${career.id}/bookmark`, { method: "POST" });
+    if (res.ok && res.data) {
+      career.is_bookmarked = res.data.bookmarked;
+      toast(res.data.message);
+      renderCareers();
+      const bBtn = $("#bookmarkCareerBtn");
+      if (bBtn) {
+        bBtn.classList.toggle("saved", career.is_bookmarked);
+        bBtn.textContent = career.is_bookmarked ? "★ Bookmarked" : "☆ Bookmark role";
+      }
+    }
+  });
 });
 
 /* =========================================================
-   QUIZZES
+   PRACTICE ZONE — QUIZZES & ASSESSMENTS
 ========================================================= */
 
 let quizTrack = "Python";
 let quizIndex = 0;
 let quizAnswers = [];
 let quizSubmitted = false;
+let currentQuizData = null;
 
-function getQuizQuestions() {
-  return quizzes[quizTrack] || quizzes.Python;
+async function getQuizQuestions() {
+  if (currentQuizData && currentQuizData.track === quizTrack) {
+    return currentQuizData.questions;
+  }
+
+  // Fetch secure questions from backend (correct answers stripped)
+  const res = await apiRequest(`/quizzes/${encodeURIComponent(quizTrack)}`);
+  if (res.ok && res.data?.questions) {
+    currentQuizData = res.data;
+    return res.data.questions;
+  }
+
+  // Fallback to local default questions if offline
+  return defaultQuizzes[quizTrack] || defaultQuizzes.Python;
 }
 
-function renderPractice() {
-  renderQuiz();
+async function renderPractice() {
+  await renderQuiz();
   renderRevision();
   renderHistory();
 }
 
-function renderQuiz() {
-  const questions = getQuizQuestions();
-  const question = questions[quizIndex];
+async function renderQuiz() {
+  const questions = await getQuizQuestions();
+  const question = questions[quizIndex] || questions[0];
 
   $("#quizCategory").textContent = quizTrack.toUpperCase() + " BASICS";
   $("#quizCount").textContent = `Question ${Math.min(quizIndex + 1, questions.length)} of ${questions.length}`;
   $("#quizBar").style.width = ((quizIndex + (quizSubmitted ? 1 : 0)) / questions.length * 100) + "%";
 
   if (quizSubmitted) {
-    const correct = questions.reduce(
-      (sum, item, index) => sum + (quizAnswers[index] === item.answer ? 1 : 0), 0
-    );
-    const percent = Math.round(correct / questions.length * 100);
-
-    $("#quizContent").innerHTML = `
-      <div class="result-box">
-        <div class="eyebrow">ASSESSMENT COMPLETE</div>
-        <div class="result-score">${percent}%</div>
-        <h2>${percent >= 80 ? "Excellent work! 🎉" : percent >= 50 ? "Good effort! ✨" : "Keep practising! 💪"}</h2>
-        <p>You answered ${correct} out of ${questions.length} questions correctly.</p>
-        <button class="primary-btn" id="retryQuiz">Try again ↻</button>
-        <button class="outline-btn" id="changeQuiz">Choose another topic</button>
-      </div>
-      <div class="quiz-review">
-        ${questions.map((item, index) => `
-          <div class="revision-card">
-            <strong>${index + 1}. ${escapeHTML(item.q)}</strong>
-            <p>Your answer: ${escapeHTML(item.options[quizAnswers[index]] ?? "Not answered")}</p>
-            <p>Correct answer: ${escapeHTML(item.options[item.answer])}</p>
-            <p>${escapeHTML(item.explanation)}</p>
-          </div>
-        `).join("")}
-      </div>
-    `;
-
-    $("#retryQuiz").addEventListener("click", startQuiz);
-    $("#changeQuiz").addEventListener("click", () => {
-      const names = Object.keys(quizzes);
-      const next = (names.indexOf(quizTrack) + 1) % names.length;
-      startQuiz(names[next]);
-    });
-    return;
+    return; // Already rendered result box in finishQuiz
   }
 
   $("#quizContent").innerHTML = `
-    <h2 class="quiz-question">${escapeHTML(question.q)}</h2>
+    <h2 class="quiz-question">${escapeHTML(question.q || question.question)}</h2>
     <div class="quiz-options">
-      ${question.options.map((option, index) => `
+      ${(question.options || []).map((option, index) => `
         <button class="quiz-option ${quizAnswers[quizIndex] === index ? "correct" : ""}"
           data-answer="${index}">
           <span class="option-letter">${String.fromCharCode(65 + index)}</span>
@@ -763,14 +1192,14 @@ function renderQuiz() {
     });
   });
 
-  $("#previousQuestion").addEventListener("click", () => {
+  $("#previousQuestion")?.addEventListener("click", () => {
     if (quizIndex > 0) {
       quizIndex--;
       renderQuiz();
     }
   });
 
-  $("#nextQuestion").addEventListener("click", () => {
+  $("#nextQuestion")?.addEventListener("click", () => {
     if (quizAnswers[quizIndex] === undefined) return;
 
     if (quizIndex < questions.length - 1) {
@@ -783,20 +1212,48 @@ function renderQuiz() {
 }
 
 function startQuiz(track = quizTrack) {
-  quizTrack = quizzes[track] ? track : "Python";
+  quizTrack = roadmaps[track] ? track : "Python";
   quizIndex = 0;
   quizAnswers = [];
   quizSubmitted = false;
+  currentQuizData = null;
   renderQuiz();
 }
 
-function finishQuiz() {
-  const questions = getQuizQuestions();
-  const correct = questions.reduce(
-    (sum, question, index) => sum + (quizAnswers[index] === question.answer ? 1 : 0), 0
-  );
-  const percent = Math.round(correct / questions.length * 100);
+async function finishQuiz() {
+  const questions = await getQuizQuestions();
 
+  // Perform secure score calculation via server API
+  const res = await apiRequest(`/quizzes/${encodeURIComponent(quizTrack)}/submit`, {
+    method: "POST",
+    body: JSON.stringify({ answers: quizAnswers })
+  });
+
+  let correct = 0;
+  let percent = 0;
+  let reviewItems = [];
+
+  if (res.ok && res.data) {
+    correct = res.data.correct;
+    percent = res.data.percent;
+    reviewItems = res.data.review || [];
+  } else {
+    // Offline local fallback calculation
+    correct = questions.reduce(
+      (sum, q, idx) => sum + (quizAnswers[idx] === q.answer ? 1 : 0), 0
+    );
+    percent = Math.round(correct / questions.length * 100);
+    reviewItems = questions.map((item, idx) => ({
+      question: item.q,
+      options: item.options,
+      selected_option: quizAnswers[idx],
+      correct_answer: item.answer,
+      is_correct: quizAnswers[idx] === item.answer,
+      explanation: item.explanation
+    }));
+  }
+
+  // Record history
   state.quizHistory.unshift({
     track: quizTrack,
     date: new Date().toISOString(),
@@ -804,12 +1261,41 @@ function finishQuiz() {
     total: questions.length,
     percent
   });
-
   state.quizHistory = state.quizHistory.slice(0, 100);
   quizSubmitted = true;
-  updateStreak();
+  updateStreakLocal();
   saveState();
-  renderQuiz();
+
+  $("#quizContent").innerHTML = `
+    <div class="result-box">
+      <div class="eyebrow">ASSESSMENT COMPLETE</div>
+      <div class="result-score">${percent}%</div>
+      <h2>${percent >= 80 ? "Excellent work! 🎉" : percent >= 50 ? "Good effort! ✨" : "Keep practising! 💪"}</h2>
+      <p>You answered ${correct} out of ${questions.length} questions correctly.</p>
+      <div style="display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap;">
+        <button class="primary-btn" id="retryQuiz">Try again ↻</button>
+        <button class="outline-btn" id="changeQuiz">Choose another topic</button>
+      </div>
+    </div>
+    <div class="quiz-review">
+      ${reviewItems.map((item, index) => `
+        <div class="revision-card">
+          <strong>${index + 1}. ${escapeHTML(item.question)}</strong>
+          <p>Your answer: <strong>${escapeHTML(item.options[item.selected_option] ?? "Not answered")}</strong></p>
+          <p>Correct answer: <strong>${escapeHTML(item.options[item.correct_answer])}</strong></p>
+          <p class="muted">${escapeHTML(item.explanation || "")}</p>
+        </div>
+      `).join("")}
+    </div>
+  `;
+
+  $("#retryQuiz")?.addEventListener("click", () => startQuiz());
+  $("#changeQuiz")?.addEventListener("click", () => {
+    const names = Object.keys(roadmaps);
+    const next = (names.indexOf(quizTrack) + 1) % names.length;
+    startQuiz(names[next]);
+  });
+
   renderStats();
   renderHistory();
   renderAnalytics();
@@ -826,7 +1312,7 @@ function renderRevision() {
   `).join("");
 }
 
-$("#revisionList").addEventListener("click", event => {
+$("#revisionList")?.addEventListener("click", event => {
   const button = event.target.closest("[data-revise-track]");
   if (!button) return;
 
@@ -852,7 +1338,7 @@ $$("[data-practice]").forEach(button => {
   button.addEventListener("click", () => {
     $$(".tab-btn").forEach(item => item.classList.toggle("active", item === button));
     $$(".practice-view").forEach(view => view.classList.remove("active"));
-    $("#" + button.dataset.practice + "View").classList.add("active");
+    $("#" + button.dataset.practice + "View")?.classList.add("active");
   });
 });
 
@@ -869,9 +1355,9 @@ const roleSkills = {
   "AI / ML Engineer": ["Python", "Statistics", "Data preparation", "Machine learning", "Projects"]
 };
 
-function renderRealityForm() {
+async function renderRealityForm() {
   const role = $("#targetRole").value;
-  const skills = roleSkills[role];
+  const skills = roleSkills[role] || roleSkills["Frontend Developer"];
 
   $("#realitySkills").innerHTML = skills.map((skill, index) => `
     <div class="rating-row">
@@ -885,6 +1371,7 @@ function renderRealityForm() {
   skills.forEach((skill, index) => {
     const input = $("#rating" + index);
     const output = $("#ratingValue" + index);
+    if (!input || !output) return;
 
     output.textContent = input.value + " / 5";
     input.addEventListener("input", () => {
@@ -895,13 +1382,13 @@ function renderRealityForm() {
   renderRealityResult();
 }
 
-$("#targetRole").addEventListener("change", renderRealityForm);
+$("#targetRole")?.addEventListener("change", renderRealityForm);
 
-$("#realityForm").addEventListener("submit", event => {
+$("#realityForm")?.addEventListener("submit", async event => {
   event.preventDefault();
 
   const role = $("#targetRole").value;
-  const skills = roleSkills[role];
+  const skills = roleSkills[role] || roleSkills["Frontend Developer"];
   const ratings = {};
 
   skills.forEach((skill, index) => {
@@ -909,10 +1396,24 @@ $("#realityForm").addEventListener("submit", event => {
   });
 
   state.reality[role] = ratings;
-  updateStreak();
+  updateStreakLocal();
   saveState();
   renderRealityResult();
-  toast("Your self-assessment has been saved.");
+
+  // If user is authenticated, save ratings to backend
+  if (currentUser) {
+    const res = await apiRequest("/skill-gaps", {
+      method: "POST",
+      body: JSON.stringify({ role, ratings })
+    });
+    if (res.ok && res.data?.analysis) {
+      renderBackendRealityResult(res.data.analysis);
+      toast("Your skill gap assessment has been saved to your account.");
+      return;
+    }
+  }
+
+  toast("Your self-assessment has been recorded.");
 });
 
 function renderRealityResult() {
@@ -928,7 +1429,7 @@ function renderRealityResult() {
     return;
   }
 
-  const skills = roleSkills[role];
+  const skills = roleSkills[role] || roleSkills["Frontend Developer"];
   const score = Math.round(
     skills.reduce((sum, skill) => sum + (ratings[skill] || 0), 0) /
     (skills.length * 5) * 100
@@ -942,94 +1443,85 @@ function renderRealityResult() {
       <div><strong>${score}%</strong><small>Self-rating</small></div>
     </div>
     <h3>${escapeHTML(role)}</h3>
-    <p class="muted">Based on the skill levels you reported.</p>
+    <p class="muted">Based on your self-reported skill proficiency.</p>
     <div class="result-note">
-      <strong>Important:</strong> This is a self-reported learning indicator, not an objective job-readiness score. Validate your skills with projects, timed exercises, and role-specific interviews.
+      <strong>Important:</strong> This is a self-reported learning indicator, not an objective job-readiness score. Validate your skills with projects and timed assessments.
     </div>
     <h3 style="margin-top:20px;text-align:left">Recommended focus areas</h3>
     ${gaps.length ? gaps.map(skill => `
       <div class="gap-item"><strong>${escapeHTML(skill)}</strong>
-      <small>Current rating: ${ratings[skill]}/5. Review the fundamentals and complete a practical exercise.</small></div>
-    `).join("") : '<p class="muted">You rated all listed skills at 3 or higher. Test them with practical projects and timed assessments.</p>'}
+      <small>Current rating: ${ratings[skill]}/5. Strengthen fundamentals and complete a practical project.</small></div>
+    `).join("") : '<p class="muted">You rated all listed skills at 3 or higher. Validate them with practical projects.</p>'}
     <button class="outline-btn full-btn" id="realityPractice">Practise in the quiz zone →</button>
   `;
 
-  $("#realityPractice").addEventListener("click", () => navigate("practice"));
+  $("#realityPractice")?.addEventListener("click", () => navigate("practice"));
+}
+
+function renderBackendRealityResult(analysis) {
+  const score = analysis.readiness_score;
+  const gaps = analysis.gaps || [];
+
+  $("#realityResult").innerHTML = `
+    <div class="eyebrow">VERIFIED SKILL ANALYSIS</div>
+    <div class="score-ring" style="--score:${score * 3.6}deg">
+      <div><strong>${score}%</strong><small>Readiness</small></div>
+    </div>
+    <h3>${escapeHTML(analysis.role)}</h3>
+    <p class="muted">${escapeHTML(analysis.disclaimer)}</p>
+    <div class="result-note">
+      <strong>Rule-based Recommendation:</strong> Identified ${gaps.length} skill gap(s) to target before applying for ${escapeHTML(analysis.role)} roles.
+    </div>
+    <h3 style="margin-top:20px;text-align:left">Recommended Learning Actions</h3>
+    ${gaps.length ? gaps.map(g => `
+      <div class="gap-item"><strong>${escapeHTML(g.skill)}</strong>
+      <small>Rating: ${g.rating}/5 · Recommendation: Follow the '${escapeHTML(g.recommended_track)}' learning path.</small></div>
+    `).join("") : '<p class="muted">All core competencies are rated at 3/5 or higher. Focus on building complete end-to-end projects!</p>'}
+    <button class="outline-btn full-btn" id="realityPractice">Practise in the quiz zone →</button>
+  `;
+
+  $("#realityPractice")?.addEventListener("click", () => navigate("practice"));
 }
 
 /* =========================================================
-   CAREER ASSISTANT — RULE-BASED DEMO
+   AI CAREER ASSISTANT
 ========================================================= */
-
-const assistantReplies = [
-  {
-    keys: ["frontend", "web developer", "website"],
-    reply: "For frontend development, follow this sequence:\n\n1. Learn HTML semantics and forms.\n2. Practise CSS, Flexbox, Grid and responsive layouts.\n3. Learn JavaScript, DOM manipulation and events.\n4. Use Git and GitHub.\n5. Build three projects, then publish a portfolio.\n\nYour next step: complete a small responsive page and test it on mobile."
-  },
-  {
-    keys: ["resume", "cv"],
-    reply: "Make your resume evidence-focused:\n\n• Keep it concise and easy to scan.\n• List technical skills you can demonstrate.\n• Describe projects with the problem, technology and outcome.\n• Add GitHub repositories and live demos where possible.\n• Include relevant internships and certifications.\n• Tailor your skills and project descriptions to each role.\n\nYour next step: choose your target role and improve the most relevant project description."
-  },
-  {
-    keys: ["placement", "interview", "job"],
-    reply: "A practical placement preparation plan:\n\n1. Practise DSA regularly.\n2. Revise OOP, DBMS, OS and computer networks.\n3. Strengthen SQL and your primary programming language.\n4. Prepare two projects you can explain deeply.\n5. Practise aptitude and mock interviews.\n6. Review job descriptions before applying.\n\nYour next step: schedule one focused practice session today."
-  },
-  {
-    keys: ["gap", "weak", "reality", "readiness"],
-    reply: "Let's turn your skill gaps into an action plan:\n\n1. Select a target role in Career Explorer.\n2. Open Skill Reality Check and rate each skill honestly.\n3. Compare your skills with recent job descriptions.\n4. Build a project that tests your weakest area.\n5. Reassess using a quiz or practical challenge.\n\nRemember: self-ratings are a starting point. Projects and assessments provide stronger evidence."
-  },
-  {
-    keys: ["python"],
-    reply: "For Python, learn variables, conditions, loops, collections, functions, OOP, file handling and exceptions. Then practise problems and build a small project such as an expense tracker or automation script.\n\nOpen Skill Roadmap to follow the structured Python track."
-  },
-  {
-    keys: ["sql", "database"],
-    reply: "For SQL, start with SELECT, WHERE, sorting and aggregate functions. Next learn GROUP BY, HAVING, joins, subqueries, constraints and window functions.\n\nBuild a sales analysis project with realistic tables and document the insights you discover."
-  },
-  {
-    keys: ["project", "portfolio", "github"],
-    reply: "Choose projects that demonstrate skills required for your target role. Include a clear README, screenshots, setup instructions, meaningful commits and a working demo where practical.\n\nA smaller finished project with clear documentation is often more useful than many unfinished projects."
-  },
-  {
-    keys: ["roadmap", "start", "beginner"],
-    reply: "Start with one target role instead of learning everything at once.\n\n1. Review the required skills.\n2. Choose one primary learning track.\n3. Study a topic each day.\n4. Practise immediately after learning.\n5. Build projects to demonstrate what you know.\n\nOpen Career Explorer to select a role and Skill Roadmap to begin."
-  }
-];
-
-function getAssistantReply(message) {
-  const text = message.toLowerCase();
-  const match = assistantReplies.find(item => item.keys.some(key => text.includes(key)));
-
-  if (match) return match.reply;
-
-  const completed = totalCompleted();
-  const average = averageScore();
-
-  return `Here's a practical way to approach your question:\n\n1. Define the career goal you want to reach.\n2. Identify the specific skill or concept you need.\n3. Learn the concept and practise it with an exercise.\n4. Save evidence of your work in your portfolio.\n5. Review your progress and decide on the next step.\n\nYour current SkillPath snapshot: ${completed} roadmap topics completed and ${average === null ? "no quiz scores recorded yet" : "a " + average + "% average quiz score"}.\n\nFor more relevant guidance, tell me your target role and the specific skill you're working on.`;
-}
 
 function addChatMessage(message, sender) {
   const element = document.createElement("div");
   element.className = "chat-bubble " + sender;
   element.textContent = message;
-  $("#chatMessages").appendChild(element);
-  $("#chatMessages").scrollTop = $("#chatMessages").scrollHeight;
+  const msgContainer = $("#chatMessages");
+  if (msgContainer) {
+    msgContainer.appendChild(element);
+    msgContainer.scrollTop = msgContainer.scrollHeight;
+  }
 }
 
-function sendChat(message) {
+async function sendChat(message) {
   const clean = message.trim();
   if (!clean) return;
 
   addChatMessage(clean, "user");
   $("#chatInput").value = "";
 
-  // Demo logic, not a call to an actual AI model.
-  setTimeout(() => {
-    addChatMessage(getAssistantReply(clean), "bot");
-  }, 250);
+  // Call backend assistant API
+  const res = await apiRequest("/assistant/chat", {
+    method: "POST",
+    body: JSON.stringify({ message: clean })
+  });
+
+  if (res.ok && res.data?.reply) {
+    addChatMessage(res.data.reply, "bot");
+  } else {
+    // Fallback response if offline
+    setTimeout(() => {
+      addChatMessage("Here is a practical next step: choose a career track in Career Explorer, study today's milestone in Skill Roadmap, and complete a Practice Zone assessment.", "bot");
+    }, 250);
+  }
 }
 
-$("#chatForm").addEventListener("submit", event => {
+$("#chatForm")?.addEventListener("submit", event => {
   event.preventDefault();
   sendChat($("#chatInput").value);
 });
@@ -1038,13 +1530,16 @@ $$("[data-prompt]").forEach(button => {
   button.addEventListener("click", () => sendChat(button.dataset.prompt));
 });
 
-$("#clearChat").addEventListener("click", () => {
-  $("#chatMessages").innerHTML = "";
-  addChatMessage("Chat cleared. What career goal would you like help with today?", "bot");
+$("#clearChat")?.addEventListener("click", () => {
+  const msgContainer = $("#chatMessages");
+  if (msgContainer) {
+    msgContainer.innerHTML = "";
+    addChatMessage("Chat cleared. What career goal or skill would you like guidance on today?", "bot");
+  }
 });
 
 /* =========================================================
-   PORTFOLIO AND PROFILE
+   PORTFOLIO & PROFILE
 ========================================================= */
 
 function populateProfileForm() {
@@ -1063,11 +1558,11 @@ function populateProfileForm() {
 
 function renderProfilePreview() {
   const profile = state.profile;
-  const name = profile.name || "Your Name";
+  const name = profile.name || "Student";
 
-  $("#welcomeName").textContent = profile.name.split(" ")[0] || "Student";
+  $("#welcomeName").textContent = name.split(" ")[0];
   $("#miniName").textContent = name;
-  $("#topName").textContent = profile.name ? profile.name.split(" ")[0] : "Student";
+  $("#topName").textContent = name.split(" ")[0];
   $("#miniAvatar").textContent = name.charAt(0).toUpperCase();
   $("#topAvatar").textContent = name.charAt(0).toUpperCase();
   $("#previewAvatar").textContent = name.charAt(0).toUpperCase();
@@ -1089,7 +1584,7 @@ function renderProfilePreview() {
   $("#previewSocial").innerHTML = socialLinks.join("");
   $("#projectCount").textContent = state.projects.length;
   $("#certCount").textContent = state.certifications.length;
-  $("#portfolioSkillCount").textContent = profile.skills.length;
+  $("#portfolioSkillCount").textContent = (profile.skills || []).length;
 }
 
 function renderProjects() {
@@ -1102,7 +1597,7 @@ function renderProjects() {
           <p>${escapeHTML(project.description)}</p>
           <div class="item-actions">
             ${link ? `<a href="${escapeHTML(link)}" target="_blank" rel="noopener noreferrer">View project ↗</a>` : "<span></span>"}
-            <button class="delete-btn" data-delete-project="${index}">Remove</button>
+            <button class="delete-btn" data-delete-project="${project.id ?? index}">Remove</button>
           </div>
         </article>
       `;
@@ -1120,7 +1615,7 @@ function renderCertifications() {
           <p>${escapeHTML(cert.issuer)}</p>
           <div class="item-actions">
             ${link ? `<a href="${escapeHTML(link)}" target="_blank" rel="noopener noreferrer">View certificate ↗</a>` : "<span></span>"}
-            <button class="delete-btn" data-delete-cert="${index}">Remove</button>
+            <button class="delete-btn" data-delete-cert="${cert.id ?? index}">Remove</button>
           </div>
         </article>
       `;
@@ -1134,10 +1629,10 @@ function renderPortfolio() {
   renderCertifications();
 }
 
-$("#profileForm").addEventListener("submit", event => {
+$("#profileForm")?.addEventListener("submit", async event => {
   event.preventDefault();
 
-  state.profile = {
+  const profileData = {
     name: $("#studentName").value.trim(),
     degree: $("#studentDegree").value.trim(),
     year: $("#studentYear").value,
@@ -1149,13 +1644,26 @@ $("#profileForm").addEventListener("submit", event => {
     skills: [...new Set($("#skillsInput").value.split(",").map(s => s.trim()).filter(Boolean))]
   };
 
+  state.profile = profileData;
   saveState();
   renderPortfolio();
   renderDashboard();
+
+  if (currentUser) {
+    const res = await apiRequest("/profile", {
+      method: "PUT",
+      body: JSON.stringify(profileData)
+    });
+    if (res.ok) {
+      toast("Profile saved to database successfully ✓");
+      return;
+    }
+  }
+
   toast("Your student profile has been saved ✓");
 });
 
-$("#projectForm").addEventListener("submit", event => {
+$("#projectForm")?.addEventListener("submit", async event => {
   event.preventDefault();
 
   const link = $("#projectLink").value.trim();
@@ -1164,11 +1672,25 @@ $("#projectForm").addEventListener("submit", event => {
     return;
   }
 
-  state.projects.push({
+  const projData = {
     title: $("#projectTitle").value.trim(),
     description: $("#projectDescription").value.trim(),
     link
-  });
+  };
+
+  if (currentUser) {
+    const res = await apiRequest("/projects", {
+      method: "POST",
+      body: JSON.stringify(projData)
+    });
+    if (res.ok && res.data?.project) {
+      state.projects.unshift(res.data.project);
+    } else {
+      state.projects.push(projData);
+    }
+  } else {
+    state.projects.push(projData);
+  }
 
   saveState();
   $("#projectForm").reset();
@@ -1177,7 +1699,7 @@ $("#projectForm").addEventListener("submit", event => {
   toast("Project added to your portfolio.");
 });
 
-$("#certForm").addEventListener("submit", event => {
+$("#certForm")?.addEventListener("submit", async event => {
   event.preventDefault();
 
   const link = $("#certLink").value.trim();
@@ -1186,11 +1708,25 @@ $("#certForm").addEventListener("submit", event => {
     return;
   }
 
-  state.certifications.push({
+  const certData = {
     title: $("#certTitle").value.trim(),
     issuer: $("#certIssuer").value.trim(),
     link
-  });
+  };
+
+  if (currentUser) {
+    const res = await apiRequest("/certifications", {
+      method: "POST",
+      body: JSON.stringify(certData)
+    });
+    if (res.ok && res.data?.certification) {
+      state.certifications.unshift(res.data.certification);
+    } else {
+      state.certifications.push(certData);
+    }
+  } else {
+    state.certifications.push(certData);
+  }
 
   saveState();
   $("#certForm").reset();
@@ -1199,12 +1735,18 @@ $("#certForm").addEventListener("submit", event => {
   toast("Certification added to your portfolio.");
 });
 
-document.addEventListener("click", event => {
+document.addEventListener("click", async event => {
   const deleteProject = event.target.closest("[data-delete-project]");
   const deleteCert = event.target.closest("[data-delete-cert]");
 
   if (deleteProject) {
-    state.projects.splice(Number(deleteProject.dataset.deleteProject), 1);
+    const val = deleteProject.dataset.deleteProject;
+    if (currentUser && Number.isInteger(Number(val)) && Number(val) > 0) {
+      await apiRequest(`/projects/${val}`, { method: "DELETE" });
+      state.projects = state.projects.filter(p => p.id !== Number(val));
+    } else {
+      state.projects.splice(Number(val), 1);
+    }
     saveState();
     renderPortfolio();
     renderAnalytics();
@@ -1212,7 +1754,13 @@ document.addEventListener("click", event => {
   }
 
   if (deleteCert) {
-    state.certifications.splice(Number(deleteCert.dataset.deleteCert), 1);
+    const val = deleteCert.dataset.deleteCert;
+    if (currentUser && Number.isInteger(Number(val)) && Number(val) > 0) {
+      await apiRequest(`/certifications/${val}`, { method: "DELETE" });
+      state.certifications = state.certifications.filter(c => c.id !== Number(val));
+    } else {
+      state.certifications.splice(Number(val), 1);
+    }
     saveState();
     renderPortfolio();
     renderAnalytics();
@@ -1247,10 +1795,10 @@ function buildPortfolioHTML() {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHTML(p.name || "Student")} | Portfolio</title>
 <style>
-body{font:16px Arial,sans-serif;max-width:900px;margin:40px auto;padding:0 20px;color:#29233e;background:#faf8ff;line-height:1.7}
-header,section{background:white;padding:24px;margin:18px 0;border-radius:16px;border:1px solid #eee7f8}
-h1{color:#7048e8}h2{color:#7048e8}article{padding:12px 0;border-bottom:1px solid #eee7f8}
-a{color:#7048e8}small{color:#777}
+body{font:16px 'DM Sans',sans-serif;max-width:900px;margin:40px auto;padding:0 20px;color:#292318;background:#FFFAF4;line-height:1.7}
+header,section{background:white;padding:24px;margin:18px 0;border-radius:16px;border:1px solid #F3DFCE}
+h1{color:#D96B43}h2{color:#D96B43}article{padding:12px 0;border-bottom:1px solid #F3DFCE}
+a{color:#D96B43}small{color:#777}
 </style>
 </head>
 <body>
@@ -1265,21 +1813,18 @@ a{color:#7048e8}small{color:#777}
 <section><h2>Skills</h2><p>${(p.skills || []).map(escapeHTML).join(" · ")}</p></section>
 <section><h2>Projects</h2>${projects || "<p>Projects coming soon.</p>"}</section>
 <section><h2>Certifications</h2>${certs || "<p>Certifications coming soon.</p>"}</section>
-<footer><small>Created with SkillPath AI.</small></footer>
+<footer><small>Created with Growvia AI.</small></footer>
 </body></html>`;
 }
 
-$("#exportPortfolio").addEventListener("click", () => {
-  downloadFile("skillpath-portfolio.html", buildPortfolioHTML(), "text/html;charset=utf-8");
+$("#exportPortfolio")?.addEventListener("click", () => {
+  downloadFile("growvia-portfolio.html", buildPortfolioHTML(), "text/html;charset=utf-8");
   toast("Portfolio HTML exported.");
 });
 
-
 /* =========================================================
-   RESUME BUILDER
+   RESUME BUILDER & PDF GENERATION
 ========================================================= */
-
-const RESUME_STORAGE_KEY = "skillpath_resume_v1";
 
 const resumeFieldIds = [
   "rName", "rEmail", "rPhone", "rLocation",
@@ -1289,7 +1834,6 @@ const resumeFieldIds = [
   "rAchievements"
 ];
 
-// Collect all resume form values
 function getResumeData() {
   return Object.fromEntries(
     resumeFieldIds.map(id => [
@@ -1299,7 +1843,6 @@ function getResumeData() {
   );
 }
 
-// Update the resume preview
 function renderResume() {
   const data = getResumeData();
 
@@ -1326,28 +1869,16 @@ function renderResume() {
   ].filter(value => value.trim()).join(" · ");
 
   setText("pLinks", links);
-
-  setText(
-    "pSummary",
-    data.rSummary,
-    "Your professional summary will appear here."
-  );
+  setText("pSummary", data.rSummary, "Your professional summary will appear here.");
 
   const education = [
     data.rDegree,
     data.rCollege,
-    data.rGraduation
-      ? "Graduation: " + data.rGraduation
-      : "",
-    data.rCgpa
+    data.rGraduation ? "Graduation: " + data.rGraduation : "",
+    data.rCgpa ? "CGPA / Percentage: " + data.rCgpa : ""
   ].filter(value => value.trim()).join("\n");
 
-  setText(
-    "pEducation",
-    education,
-    "Your degree and college will appear here."
-  );
-
+  setText("pEducation", education, "Your degree and college will appear here.");
   setText("pSkills", data.rSkills, "Your skills will appear here.");
   setText("pProjects", data.rProjects, "Your projects will appear here.");
   setText("pExperience", data.rExperience, "Your experience will appear here.");
@@ -1355,103 +1886,175 @@ function renderResume() {
   setText("pAchievements", data.rAchievements, "Your achievements will appear here.");
 }
 
-// Load previously saved resume data
-function loadResume() {
-  try {
-    const saved = JSON.parse(
-      localStorage.getItem(RESUME_STORAGE_KEY) || "null"
-    );
+async function loadBackendResume() {
+  if (currentUser) {
+    const res = await apiRequest("/resume");
+    if (res.ok && res.data) {
+      resumeFieldIds.forEach(id => {
+        const field = document.getElementById(id);
+        if (field && res.data[id] !== undefined) {
+          field.value = res.data[id] || "";
+        }
+      });
+      renderResume();
+      return;
+    }
+  }
 
+  // Fallback to localStorage
+  try {
+    const saved = JSON.parse(localStorage.getItem(RESUME_STORAGE_KEY) || "null");
     if (saved) {
       resumeFieldIds.forEach(id => {
         const field = document.getElementById(id);
-
-        if (field) {
-          field.value = saved[id] || "";
-        }
+        if (field) field.value = saved[id] || "";
       });
     }
-  } catch (error) {
-    console.error("Could not load resume:", error);
+  } catch (e) {
+    console.warn("Could not load local resume", e);
   }
-
   renderResume();
 }
 
-// Connect resume form events
 const resumeForm = document.getElementById("resumeForm");
 
 if (resumeForm) {
-  // Update preview while typing
   resumeForm.addEventListener("input", renderResume);
 
-  // Save resume details
-  resumeForm.addEventListener("submit", event => {
+  resumeForm.addEventListener("submit", async event => {
     event.preventDefault();
+    const data = getResumeData();
 
     try {
-      localStorage.setItem(
-        RESUME_STORAGE_KEY,
-        JSON.stringify(getResumeData())
-      );
+      localStorage.setItem(RESUME_STORAGE_KEY, JSON.stringify(data));
+    } catch {}
 
-      renderResume();
+    renderResume();
 
-      if (typeof toast === "function") {
-        toast("Your resume has been saved!");
-      } else {
-        alert("Your resume has been saved!");
+    if (currentUser) {
+      const res = await apiRequest("/resume", {
+        method: "PUT",
+        body: JSON.stringify(data)
+      });
+      if (res.ok) {
+        toast("Resume saved to backend successfully! ✓");
+        return;
       }
-    } catch (error) {
-      alert("Unable to save your resume in this browser.");
+    }
+
+    toast("Resume saved in browser storage!");
+  });
+}
+
+$("#clearResume")?.addEventListener("click", () => {
+  if (!confirm("Clear all details from your resume?")) return;
+  if (resumeForm) resumeForm.reset();
+  localStorage.removeItem(RESUME_STORAGE_KEY);
+  renderResume();
+  toast("Resume form cleared.");
+});
+
+$("#printResume")?.addEventListener("click", () => {
+  renderResume();
+  window.print();
+});
+
+// Download server-generated PDF
+$("#downloadServerPdf")?.addEventListener("click", async () => {
+  if (!currentUser) {
+    toast("Log in to download your server-generated PDF resume.");
+    openAuthModal("login");
+    return;
+  }
+
+  // Ensure latest changes are saved first
+  const resumeData = getResumeData();
+  await apiRequest("/resume", {
+    method: "PUT",
+    body: JSON.stringify(resumeData)
+  });
+
+  toast("Generating professional PDF resume...");
+
+  const res = await apiRequest("/resume/pdf");
+  if (res.ok && res.blob) {
+    const url = URL.createObjectURL(res.blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const studentName = resumeData.rName ? resumeData.rName.replace(/\s+/g, "_") : "Student";
+    link.download = `${studentName}_Resume.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast("PDF Resume downloaded successfully! 📄");
+  } else {
+    toast("Unable to generate PDF. You can also use the Print button to save as PDF.", true);
+  }
+});
+
+// Profile photo upload handling
+const resumePhotoInput = document.getElementById("resumePhoto");
+if (resumePhotoInput) {
+  resumePhotoInput.addEventListener("change", async function () {
+    const file = this.files && this.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast("Please select a valid image (JPG, PNG, WebP).", true);
+      this.value = "";
+      return;
+    }
+
+    if (currentUser) {
+      const formData = new FormData();
+      formData.append("photo", file);
+      const res = await apiRequest("/resume/photo", {
+        method: "POST",
+        body: formData
+      });
+      if (res.ok) {
+        toast("Resume photo uploaded successfully!");
+      }
     }
   });
 }
 
-// Clear resume form
-const clearResumeButton = document.getElementById("clearResume");
-
-if (clearResumeButton) {
-  clearResumeButton.addEventListener("click", () => {
-    if (!confirm("Clear all details from your resume?")) return;
-
-    if (resumeForm) resumeForm.reset();
-
-    localStorage.removeItem(RESUME_STORAGE_KEY);
-    renderResume();
-  });
-}
-
-// Print or save resume as PDF
-const printResumeButton = document.getElementById("printResume");
-
-if (printResumeButton) {
-  printResumeButton.addEventListener("click", () => {
-    renderResume();
-    window.print();
-  });
-}
-
-
 /* =========================================================
-   ANALYTICS
+   PROGRESS & ANALYTICS
 ========================================================= */
 
-function renderAnalytics() {
+async function renderAnalytics() {
   const tracks = Object.keys(roadmaps);
+  let d = null;
+
+  if (currentUser) {
+    const dashRes = await apiRequest("/dashboard");
+    if (dashRes.ok && dashRes.data) {
+      d = dashRes.data;
+    }
+  }
+
   const average = averageScore();
+  const topicsDone = d ? d.topics_completed : totalCompleted();
+  const attemptsCount = d ? d.recent_quizzes.length : state.quizHistory.length;
+  const avgText = d && d.practice_average !== null ? d.practice_average + "%" : (average === null ? "—" : average + "%");
+  const portTotal = d ? d.portfolio_count : (state.projects.length + state.certifications.length);
 
-  $("#analyticsTopics").textContent = totalCompleted();
-  $("#analyticsAttempts").textContent = state.quizHistory.length;
-  $("#analyticsScore").textContent = average === null ? "—" : average + "%";
-  $("#analyticsPortfolio").textContent = state.projects.length + state.certifications.length;
+  $("#analyticsTopics").textContent = topicsDone;
+  $("#analyticsAttempts").textContent = attemptsCount;
+  $("#analyticsScore").textContent = avgText;
+  $("#analyticsPortfolio").textContent = portTotal;
 
-  $("#analyticsTracks").innerHTML = tracks.map(track => `
-    <div class="track-row">
-      <div class="track-row-top"><strong>${escapeHTML(track)}</strong><span>${progressFor(track)}%</span></div>
-      <div class="mini-progress"><span style="width:${progressFor(track)}%"></span></div>
-    </div>
-  `).join("");
+  $("#analyticsTracks").innerHTML = tracks.map(track => {
+    const pct = progressFor(track);
+    return `
+      <div class="track-row">
+        <div class="track-row-top"><strong>${escapeHTML(track)}</strong><span>${pct}%</span></div>
+        <div class="mini-progress"><span style="width:${pct}%"></span></div>
+      </div>
+    `;
+  }).join("");
 
   $("#analyticsQuizzes").innerHTML = state.quizHistory.length
     ? state.quizHistory.slice(0, 7).map(item => `
@@ -1460,24 +2063,24 @@ function renderAnalytics() {
           <strong>${escapeHTML(item.track)}</strong><span>${item.percent}%</span>
         </div>
         <div class="mini-progress"><span style="width:${item.percent}%"></span></div>
-        <small style="color:#aaa5b8">${formatDate(new Date(item.date))}</small>
+        <small style="color:#8C7B78">${formatDate(new Date(item.date))}</small>
       </div>
     `).join("")
-    : '<div class="empty-state">Complete a quiz to see your results here.</div>';
+    : '<div class="empty-state">Complete a quiz in Practice Zone to see results here.</div>';
 }
 
-$("#exportData").addEventListener("click", () => {
+$("#exportData")?.addEventListener("click", () => {
   downloadFile(
-    "skillpath-progress.json",
+    "growvia-progress.json",
     JSON.stringify(state, null, 2),
     "application/json"
   );
   toast("Progress data exported.");
 });
 
-$("#resetData").addEventListener("click", () => {
+$("#resetData")?.addEventListener("click", () => {
   const confirmed = window.confirm(
-    "Reset all SkillPath data in this browser? This removes your saved profile, projects, certifications, roadmap progress and quiz history."
+    "Reset all local app data in this browser? This removes your saved local profile, projects, and roadmap cache."
   );
 
   if (!confirmed) return;
@@ -1487,21 +2090,16 @@ $("#resetData").addEventListener("click", () => {
   populateProfileForm();
   renderAll();
   navigate("dashboard");
-  toast("App data has been reset.");
+  toast("Local app data has been reset.");
 });
 
 /* =========================================================
    PROFILE SHORTCUTS
 ========================================================= */
 
-$("#editProfile").addEventListener("click", () => {
+$("#editProfile")?.addEventListener("click", () => {
   navigate("portfolio");
-  $("#studentName").focus();
-});
-
-$("#topProfile").addEventListener("click", () => {
-  navigate("portfolio");
-  $("#studentName").focus();
+  $("#studentName")?.focus();
 });
 
 /* =========================================================
@@ -1520,47 +2118,25 @@ function renderAll() {
   renderAnalytics();
 }
 
-function init() {
-  $("#todayDate").textContent = formatDate();
+async function init() {
+  const todayElement = $("#todayDate");
+  if (todayElement) todayElement.textContent = formatDate();
 
-  updateStreak();
+  updateStreakLocal();
   populateProfileForm();
 
-  // Keep dashboard and full roadmap selectors synchronized.
-  $("#dashboardLanguage").value = "Python";
-  $("#roadmapLanguage").value = "Python";
-loadResume();
+  // Keep dashboard and full roadmap track selectors synchronized
+  if ($("#dashboardLanguage")) $("#dashboardLanguage").value = "Python";
+  if ($("#roadmapLanguage")) $("#roadmapLanguage").value = "Python";
+
+  // Load careers
+  await loadCareersFromBackend();
+
+  // Check auth session
+  await checkAuth();
+
+  // Render initial views
   renderAll();
 }
 
 init();
-
-const resumePhotoInput = document.getElementById("resumePhoto");
-const previewResumePhoto = document.getElementById("previewResumePhoto");
-
-if (resumePhotoInput && previewResumePhoto) {
-    resumePhotoInput.addEventListener("change", function () {
-        const file = this.files && this.files[0];
-
-        if (!file) {
-            previewResumePhoto.removeAttribute("src");
-            previewResumePhoto.hidden = true;
-            return;
-        }
-
-        if (!file.type.startsWith("image/")) {
-            alert("Please select a valid image.");
-            this.value = "";
-            return;
-        }
-
-        const reader = new FileReader();
-
-        reader.onload = function (event) {
-            previewResumePhoto.src = event.target.result;
-            previewResumePhoto.hidden = false;
-        };
-
-        reader.readAsDataURL(file);
-    });
-}
